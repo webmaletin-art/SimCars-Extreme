@@ -142,9 +142,18 @@ func _build_scene() -> void:
 	if opts["backdrop"]:
 		_build_backdrop()
 
+static var _globals_done := false
+
 func _init_globals() -> void:
-	if not RenderingServer.global_shader_parameter_get_list().has("car_pos"):
+	if not _globals_done: # (global_shader_parameter_get_list sólo sirve en el editor: acá se agregan una vez por ejecución)
+		_globals_done = true
 		RenderingServer.global_shader_parameter_add("car_pos", RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3(0, -1000, 0))
+		RenderingServer.global_shader_parameter_add("track_window", RenderingServer.GLOBAL_VAR_TYPE_VEC4, Vector4(0, 0, 0, 0))
+	RenderingServer.global_shader_parameter_set("track_window", Vector4(0, 0, 0, 0)) # (sin ventana hasta que un circuito la active)
+
+## Arco del circuito (m) en el que está un punto, para ocultar lo que queda del otro lado de la vuelta. El estacionamiento no tiene: -1
+func _arc_of(_p: Vector3) -> float:
+	return -1.0
 
 ## Posición del auto para que aparte el pasto (global del shader)
 func set_car_pos(p: Vector3) -> void:
@@ -631,7 +640,8 @@ func _multi(tex: String, w: float, h: float, xforms: Array, amp := 0.05, tint :=
 	mm.instance_count = xforms.size()
 	for i in xforms.size():
 		mm.set_instance_transform(i, xforms[i])
-		mm.set_instance_custom_data(i, Color(0, 0, 0, 0))
+		var arc := _arc_of(xforms[i].origin)
+		mm.set_instance_custom_data(i, Color(0, 0, maxf(arc, 0.0), 1.0 if arc >= 0.0 else 0.0))
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
 	mi.material_override = _sway_mat(tex, amp, tint)

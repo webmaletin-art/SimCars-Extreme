@@ -38,6 +38,42 @@ var _side := {}
 var _spine: Array = []
 var _fing: Array = []
 var head_hidden := false
+var head_meshes: Array = [] # pelo, cejas, ojos, dientes...: sólo se dibujan si se ve la cabeza
+
+## Mallas que sólo hacen falta con la cabeza a la vista (en primera persona la cabeza se esconde y ni se procesan)
+const HEAD_PARTS := ["hair", "bangs", "bun", "slicked", "double_high", "flat", "eyebrow", "eye", "tear", "teeth", "tongue", "scalp"]
+## Nunca se ven a la distancia de juego: se apagan siempre
+const NEVER_PARTS := ["oem3dlusion", "tearline"]
+
+## Versión liviana para el juego: sin las formas de la cara (el GLB las conserva para el modo historia), pelo y pestañas recortados en vez de mezclados
+## (la mezcla con prepass dibuja el pelo dos veces y es lo más caro del piloto) y la cabeza como grupo que se puede apagar.
+func _lighten(mi: MeshInstance3D) -> void:
+	var low := String(mi.name).to_lower()
+	for nv in NEVER_PARTS:
+		if low.contains(nv):
+			mi.visible = false
+			return
+	var m := mi.mesh as ArrayMesh
+	if m != null and m.get_blend_shape_count() > 0:
+		var n := ArrayMesh.new()
+		for si in m.get_surface_count():
+			var fmt := m.surface_get_format(si)
+			n.add_surface_from_arrays(m.surface_get_primitive_type(si), m.surface_get_arrays(si), [], {}, fmt & Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS)
+			n.surface_set_material(si, m.surface_get_material(si))
+			n.surface_set_name(si, m.surface_get_name(si))
+		mi.mesh = n
+	for si in mi.mesh.get_surface_count():
+		var mt := mi.mesh.surface_get_material(si)
+		if mt is BaseMaterial3D:
+			var bm := mt as BaseMaterial3D
+			var mn := String(bm.resource_name).to_lower()
+			if (mn.contains("hair") or mn.contains("lash") or mn.contains("scalp") or mn.contains("brow") or mn.contains("flat")) and bm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+				bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+				bm.alpha_scissor_threshold = 0.5
+	for hp in HEAD_PARTS:
+		if low.contains(hp):
+			head_meshes.append(mi)
+			return
 
 ## scene: el personaje (PackedScene del GLB procesado); height: estatura en metros
 func _init(parent: Node3D, scene_res: PackedScene, height := 1.76) -> void:
@@ -49,6 +85,7 @@ func _init(parent: Node3D, scene_res: PackedScene, height := 1.76) -> void:
 	for mi in _meshes(scene):
 		mi.extra_cull_margin = 3.0
 		meshes.append(mi)
+		_lighten(mi)
 	if skel == null:
 		return
 	for i in skel.get_bone_count():
@@ -265,6 +302,9 @@ func hide_head(v: bool) -> void:
 		return
 	head_hidden = v
 	skel.set_bone_pose_scale(B["Head"], Vector3.ONE * (0.001 if v else 1.0))
+	for hm in head_meshes:
+		if is_instance_valid(hm):
+			(hm as MeshInstance3D).visible = not v
 
 func set_visible(v: bool) -> void:
 	root.visible = v

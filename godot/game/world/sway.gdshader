@@ -3,9 +3,13 @@
 shader_type spatial;
 
 global uniform vec3 car_pos;
+// Ventana del circuito: x = arco (m) donde está el auto, y = cuánto se ve adelante, z = cuánto atrás, w = largo del circuito (0: sin ventana, p. ej. el estacionamiento).
+// Lo que está en otro tramo del circuito (el "otro lado" de la vuelta) ni se rasteriza: INSTANCE_CUSTOM.z = arco de la instancia, .w = 1 si tiene.
+global uniform vec4 track_window;
 uniform float push_k = 1.0; // cuánto se aparta con el auto (árboles: 0)
 uniform float push_r = 2.6;
-render_mode unshaded, cull_disabled, depth_prepass_alpha;
+// (sin depth_prepass_alpha: dibujaba todo el follaje dos veces y en el teléfono costaba más de lo que ahorraba)
+render_mode unshaded, cull_disabled;
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_disable;
 uniform float wind : hint_range(0.0, 2.0) = 0.6;
@@ -38,6 +42,12 @@ void vertex() {
 		VERTEX.y -= pk * 0.25;
 	}
 	v_fade = 1.0;
+	if (INSTANCE_CUSTOM.w > 0.5 && track_window.w > 0.0) {
+		float d = mod(INSTANCE_CUSTOM.z - track_window.x + track_window.w * 0.5, track_window.w) - track_window.w * 0.5;
+		if (d > track_window.y || d < -track_window.z) {
+			VERTEX = vec3(0.0); // los cuatro vértices en un punto: triángulos sin área, no se dibuja ni un píxel
+		}
+	}
 }
 
 void fragment() {

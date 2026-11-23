@@ -13,6 +13,10 @@ const SPECIES := [
 	["arbol_cipres_azul", 8.0, 0.5, 6], ["arbol_alamo_amarillo", 8.0, 0.417, 6]]
 
 var dt: DirtTrack
+var arc_nodes: Array = [] # {n, a0, a1}: pedazos de cerco/barrera que sólo se dibujan cuando su tramo del circuito está cerca del auto
+var _last_pos := Vector3.ZERO
+var _speed := 0.0
+var _win_clock := 0.0
 
 func _init() -> void:
 	dt = DirtTrack.new()
@@ -28,6 +32,74 @@ func _build_scene() -> void:
 	_build_details()
 	_build_props()
 	cones = []
+
+## Arco del circuito (m) de un punto
+func _arc_of(p: Vector3) -> float:
+	return float(dt.cum[int(dt.nearest(p.x, p.z)["i"])])
+
+## Ventana de lo que se ve: el tramo del circuito cerca del auto (adelante según la velocidad, un poco atrás). Lo del otro lado de la vuelta no se dibuja:
+## los árboles y el pasto lo descartan en el shader (track_window) y los cercos por pedazos acá.
+func set_car_pos(p: Vector3) -> void:
+	super.set_car_pos(p)
+	var dtm := maxf(get_process_delta_time(), 0.001)
+	var v := Vector2(p.x - _last_pos.x, p.z - _last_pos.z).length() / dtm
+	_last_pos = p
+	_speed = lerpf(_speed, minf(v, 90.0), 0.08)
+	var arc := _arc_of(p)
+	var ahead := clampf(190.0 + 2.4 * _speed, 190.0, 340.0)
+	RenderingServer.global_shader_parameter_set("track_window", Vector4(arc, ahead, 90.0, dt.length))
+	_win_clock -= dtm
+	if _win_clock <= 0.0:
+		_win_clock = 0.2
+		for e in arc_nodes:
+			var mid: float = (float(e["a0"]) + float(e["a1"])) * 0.5
+			var half: float = absf(float(e["a1"]) - float(e["a0"])) * 0.5
+			var d := fposmod(mid - arc + dt.length * 0.5, dt.length) - dt.length * 0.5
+			(e["n"] as Node3D).visible = d - half < ahead and d + half > -90.0
+
+## Pared continua a lo largo del eje, partida en pedazos de ~100 m (cada uno se oculta solo cuando su tramo queda lejos del auto)
+func _wall_chunks(side: float, lat: float, y_off: float, h: float, u_per_m: float, v_top: float, v_bot: float, mat: Material, one_sided: bool) -> void:
+	var n := dt.pts.size()
+	var CH := 50
+	for c0 in range(0, n, CH):
+		var c1 := mini(c0 + CH, n)
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for i in range(c0, c1 + 1):
+			var k := i % n
+			var tg := dt.tans[k]
+			var nl := Vector2(-tg.y, tg.x)
+			var q: Vector2 = dt.pts[k] + nl * side * lat
+			var c := float(dt.cum[k]) if i < n else dt.length
+			var yb := float(dt.hprof[k]) + y_off
+			st.set_uv(Vector2(c * u_per_m, v_bot))
+			st.add_vertex(Vector3(q.x, yb, q.y))
+			st.set_uv(Vector2(c * u_per_m, v_top))
+			st.add_vertex(Vector3(q.x, yb + h, q.y))
+		for i in c1 - c0:
+			var v0 := i * 2
+			if side < 0.0 or not one_sided:
+				st.add_index(v0)
+				st.add_index(v0 + 1)
+				st.add_index(v0 + 2)
+				st.add_index(v0 + 1)
+				st.add_index(v0 + 3)
+				st.add_index(v0 + 2)
+			else:
+				st.add_index(v0)
+				st.add_index(v0 + 2)
+				st.add_index(v0 + 1)
+				st.add_index(v0 + 1)
+				st.add_index(v0 + 2)
+				st.add_index(v0 + 3)
+		st.generate_normals()
+		var mi := MeshInstance3D.new()
+		mi.mesh = st.commit()
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		props.add_child(mi)
+		_tag(mi, "misc", 260.0)
+		arc_nodes.append({"n": mi, "a0": float(dt.cum[c0 % n]), "a1": float(dt.cum[c1 % n]) if c1 < n else dt.length})
 
 ## Altura del suelo en cualquier punto (camino y banquina: la física; más lejos: el terreno)
 func gy(x: float, z: float) -> float:
@@ -244,44 +316,7 @@ func _build_fences() -> void:
 	m.roughness = 0.95
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	for side in [1.0, -1.0]:
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var n := dt.pts.size()
-		for i in n + 1:
-			var k := i % n
-			var p := dt.pts[k]
-			var tg := dt.tans[k]
-			var nl := Vector2(-tg.y, tg.x)
-			var q: Vector2 = p + nl * float(side) * DirtTrack.FENCE_HALF
-			var c := float(dt.cum[k]) if i < n else dt.length
-			var yb := float(dt.hprof[k]) + DirtTrack.cross_profile(DirtTrack.FENCE_HALF) - 0.05
-			st.set_uv(Vector2(c / 3.0, 1.0))
-			st.add_vertex(Vector3(q.x, yb, q.y))
-			st.set_uv(Vector2(c / 3.0, 0.0))
-			st.add_vertex(Vector3(q.x, yb + 1.25, q.y))
-		for i in n:
-			var v0 := i * 2
-			if side < 0.0:
-				st.add_index(v0)
-				st.add_index(v0 + 1)
-				st.add_index(v0 + 2)
-				st.add_index(v0 + 1)
-				st.add_index(v0 + 3)
-				st.add_index(v0 + 2)
-			else:
-				st.add_index(v0)
-				st.add_index(v0 + 2)
-				st.add_index(v0 + 1)
-				st.add_index(v0 + 1)
-				st.add_index(v0 + 2)
-				st.add_index(v0 + 3)
-		st.generate_normals()
-		var mi := MeshInstance3D.new()
-		mi.mesh = st.commit()
-		mi.material_override = m
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		props.add_child(mi)
-		_tag(mi, "misc", 260.0)
+		_wall_chunks(float(side), DirtTrack.FENCE_HALF, DirtTrack.cross_profile(DirtTrack.FENCE_HALF) - 0.05, 1.25, 1.0 / 3.0, 0.0, 1.0, m, true)
 
 func _pick_species() -> Array:
 	var tot := 0
@@ -312,7 +347,7 @@ func _build_forest() -> void:
 				var q: Vector2 = p + nl * float(side) * off + tg * rng.randf_range(-1.2, 1.2)
 				var s := _pick_species()
 				groups_x[s[0]].append(_xf(Vector3(q.x, gy(q.x, q.y) - 0.1, q.y), rng.randf_range(1.15, 1.75)))
-	var sp := 8.0 / maxf(0.4, sqrt(tq))
+	var sp := 10.5 / maxf(0.4, sqrt(tq))
 	var x := -230.0
 	while x < 280.0:
 		var z := -90.0
@@ -321,7 +356,7 @@ func _build_forest() -> void:
 			var pz := z + rng.randf_range(-3.2, 3.2)
 			var nr := dt.nearest(px, pz)
 			var d: float = nr["d"]
-			if d > DirtTrack.FENCE_HALF + 11.0 and d < 160.0 and rng.randf() < 0.92:
+			if d > DirtTrack.FENCE_HALF + 11.0 and d < DirtTrack.FENCE_HALF + 11.0 + 42.0 and rng.randf() < 0.85: # (más lejos no se ve: las hileras de adelante lo tapan)
 				var s2 := _pick_species()
 				groups_x[s2[0]].append(_xf(Vector3(px, dt.terrain_height(px, pz) - 0.1, pz), rng.randf_range(1.0, 1.9)))
 			z += sp

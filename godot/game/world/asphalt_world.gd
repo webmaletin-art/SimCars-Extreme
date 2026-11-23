@@ -183,35 +183,7 @@ func _build_barrier() -> void:
 	var bt := _img_tex(8, 2, func(x, y): return (Color(0.85, 0.12, 0.1) if x < 4 else Color(0.94, 0.94, 0.94)) if y == 0 else Color(0.28, 0.28, 0.3))
 	var bm := _nearest_mat(bt)
 	for side in [1.0, -1.0]:
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var n := at.pts.size()
-		for i in n + 1:
-			var k := i % n
-			var p := at.pts[k]
-			var nl := Vector2(-at.tans[k].y, at.tans[k].x)
-			var q: Vector2 = p + nl * float(side) * AsphaltTrack.FH
-			var c := float(at.cum[k]) if i < n else at.length
-			var yb := float(at.hprof[k]) + at.profile(AsphaltTrack.FH) - 0.05
-			st.set_uv(Vector2(c / 8.0, 0.99))
-			st.add_vertex(Vector3(q.x, yb, q.y))
-			st.set_uv(Vector2(c / 8.0, 0.01))
-			st.add_vertex(Vector3(q.x, yb + 0.95, q.y))
-		for i in n:
-			var v0 := i * 2
-			st.add_index(v0)
-			st.add_index(v0 + 1)
-			st.add_index(v0 + 2)
-			st.add_index(v0 + 1)
-			st.add_index(v0 + 3)
-			st.add_index(v0 + 2)
-		st.generate_normals()
-		var mi := MeshInstance3D.new()
-		mi.mesh = st.commit()
-		mi.material_override = bm
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		props.add_child(mi)
-		_tag(mi, "misc", 300.0)
+		_wall_chunks(float(side), AsphaltTrack.FH, at.profile(AsphaltTrack.FH) - 0.05, 0.95, 1.0 / 8.0, 0.01, 0.99, bm, false)
 
 ## Pilas de neumáticos del lado de afuera de las curvas cerradas
 func _build_tyres() -> void:
@@ -263,7 +235,7 @@ func _build_trees() -> void:
 			var q: Vector2 = at.pts[i] + nl * float(side) * off
 			var s := _pick_species()
 			groups[s[0]].append(_xf(Vector3(q.x, gy(q.x, q.y) - 0.1, q.y), rng.randf_range(1.1, 1.7)))
-	var sp := 13.0 / maxf(0.4, sqrt(tq))
+	var sp := 15.0 / maxf(0.4, sqrt(tq))
 	var x := -250.0
 	while x < 600.0:
 		var z := -360.0
@@ -271,7 +243,7 @@ func _build_trees() -> void:
 			var px := x + rng.randf_range(-4.0, 4.0)
 			var pz := z + rng.randf_range(-4.0, 4.0)
 			var d: float = at.nearest(px, pz)["d"]
-			if d > AsphaltTrack.FH + 16.0 and d < 170.0 and rng.randf() < 0.85:
+			if d > AsphaltTrack.FH + 16.0 and d < AsphaltTrack.FH + 16.0 + 55.0 and rng.randf() < 0.85:
 				var s2 := _pick_species()
 				groups[s2[0]].append(_xf(Vector3(px, at.terrain_height(px, pz) - 0.1, pz), rng.randf_range(1.0, 1.9)))
 			z += sp
