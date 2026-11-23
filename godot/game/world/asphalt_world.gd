@@ -19,8 +19,7 @@ func _build_scene() -> void:
 	_build_barrier()
 	_build_tyres()
 	if city:
-		wall_set = ["ciudad_lejos", "ciudad_cerca", 30.0, 16.0]
-		_build_forest_wall()
+		_build_city_boxes()
 		_build_lamps()
 	else:
 		_build_forest() # (una hilera de árboles bajos + pared de bosque + bandas de pasto: heredado del camino de tierra)
@@ -60,6 +59,112 @@ func _ground_mat() -> StandardMaterial3D:
 	if city:
 		return _mat_tex("hormigon", Vector3(1, 1, 1), 0.95, Color(0.74, 0.74, 0.77))
 	return _mat_tex("pasto", Vector3(1, 1, 1), 0.95, Color(0.9, 1.0, 0.85))
+
+const FACADE := preload("res://game/world/city_facade.gdshader")
+
+## Edificios como los de Dream City: cajas de ~10 triángulos (pared de frente y costados + techo) y un shader (copiado de Dream Rally) que dibuja las ventanas, postigos,
+## balcones, vidrieras y marquesinas a partir de las medidas de la pared y las funde en una pared lisa a lo lejos. Dos filas: una baja pegada y otra más alta detrás.
+func _build_city_boxes() -> void:
+	var mat := ShaderMaterial.new()
+	mat.shader = FACADE
+	var gimg := Image.create(128, 128, false, Image.FORMAT_L8)
+	var gr := RandomNumberGenerator.new()
+	gr.seed = 4
+	for y in 128:
+		for x in 128:
+			gimg.set_pixel(x, y, Color.from_hsv(0, 0, 0.5 + gr.randf_range(-0.12, 0.12)))
+	mat.set_shader_parameter("grain", ImageTexture.create_from_image(gimg))
+	var walls := [Color(0.84, 0.76, 0.62), Color(0.72, 0.74, 0.78), Color(0.78, 0.56, 0.44), Color(0.88, 0.85, 0.78), Color(0.62, 0.68, 0.72), Color(0.80, 0.66, 0.50), Color(0.70, 0.52, 0.46), Color(0.76, 0.78, 0.66)]
+	var n := at.pts.size()
+	var fh := AsphaltTrack.FH
+	var CH := 17
+	for side in [1.0, -1.0]:
+		var offs := _wall_offsets(float(side))
+		var m := offs.size()
+		var sts := {}
+		var arcs := {}
+		for row in 2:
+			var j := 0
+			while j < m - 2:
+				var w := rng.randf_range(9.0, 17.0)
+				# avanza por la curva hasta cubrir el ancho
+				var je := j
+				var run := 0.0
+				while je < m - 1 and run < w:
+					var qa := _wall_pt(j, je, side, offs, row)
+					run = _wall_pt(j, j, side, offs, row).distance_to(qa)
+					je += 1
+				if je >= m:
+					break
+				var p0 := _wall_pt(j, j, side, offs, row)
+				var p1 := _wall_pt(j, je, side, offs, row)
+				var wdt := p0.distance_to(p1)
+				var depth := rng.randf_range(8.0, 12.0)
+				var back_i := (j * 3) % n
+				var nl := Vector2(-at.tans[back_i].y, at.tans[back_i].x)
+				var nrm := nl * float(side)
+				var far_pt := p0 + nrm * (depth + 2.0)
+				var hgt := rng.randf_range(11.0, 19.0) if row == 0 else rng.randf_range(20.0, 36.0)
+				if wdt > 4.0 and _clear_of_other_legs(far_pt, back_i, fh + 4.5) and _clear_of_other_legs(p0, back_i, fh + 4.0) and _clear_of_other_legs(p1, back_i, fh + 4.0):
+					var ci := j / CH
+					if not sts.has(ci):
+						var st := SurfaceTool.new()
+						st.begin(Mesh.PRIMITIVE_TRIANGLES)
+						sts[ci] = st
+						arcs[ci] = [float(at.cum[(j * 3) % n]), float(at.cum[((j + CH) * 3) % n]) if (j + CH) * 3 < n else at.length]
+					_add_box(sts[ci], p0, p1, nrm * depth, hgt, walls[rng.randi() % walls.size()], rng.randf())
+				j = je + (1 if rng.randf() < 0.5 else 2)
+		for ci in sts:
+			var st2: SurfaceTool = sts[ci]
+			var mi := MeshInstance3D.new()
+			mi.mesh = st2.commit()
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			props.add_child(mi)
+			_tag(mi, "misc", 320.0)
+			arc_nodes.append({"n": mi, "ext": 70.0, "a0": float(arcs[ci][0]), "a1": float(arcs[ci][1])})
+
+## punto del frente de los edificios (fila 0 pegada, fila 1 más atrás) en la muestra je
+func _wall_pt(_j: int, je: int, side: float, offs: PackedFloat32Array, row: int) -> Vector2:
+	var n := at.pts.size()
+	var i := (je * 3) % n
+	var nl := Vector2(-at.tans[i].y, at.tans[i].x)
+	var o := float(offs[je % offs.size()]) - 6.0 + (22.0 if row == 1 else 0.0)
+	return at.pts[i] + nl * side * maxf(AsphaltTrack.FH + 3.5, o)
+
+## una caja: frente p0→p1 (el lado que mira al circuito), profundidad d (vector hacia atrás), alto h. UV en metros, UV2 = (ancho, alto), COLOR = pared + semilla
+func _add_box(st: SurfaceTool, p0: Vector2, p1: Vector2, d: Vector2, h: float, col: Color, seed: float) -> void:
+	var y0 := minf(gy(p0.x, p0.y), gy(p1.x, p1.y)) - 0.6
+	var y1 := y0 + h + 0.6
+	var c := Color(col.r, col.g, col.b, snappedf(seed, 1.0 / 255.0))
+	var w := p0.distance_to(p1)
+	var dl := d.length()
+	var corners := [p0, p1, p1 + d, p0 + d]
+	# paredes: frente (0→1), costado en 1, fondo y costado en 0
+	for k in 4:
+		var a: Vector2 = corners[k]
+		var b: Vector2 = corners[(k + 1) % 4]
+		var wl := a.distance_to(b)
+		var nrm3 := Vector3(b.y - a.y, 0, -(b.x - a.x)).normalized()
+		if k == 0 or k == 2:
+			pass
+		var verts := [Vector3(a.x, y0, a.y), Vector3(b.x, y0, b.y), Vector3(b.x, y1, b.y), Vector3(a.x, y1, a.y)]
+		var uvs := [Vector2(0, -0.6), Vector2(wl, -0.6), Vector2(wl, h), Vector2(0, h)]
+		for idx in [0, 1, 2, 0, 2, 3]:
+			st.set_color(c)
+			st.set_normal(nrm3)
+			st.set_uv(uvs[idx])
+			st.set_uv2(Vector2(wl, h))
+			st.add_vertex(verts[idx])
+	# techo
+	var rv := [Vector3(p0.x, y1, p0.y), Vector3(p1.x, y1, p1.y), Vector3((p1 + d).x, y1, (p1 + d).y), Vector3((p0 + d).x, y1, (p0 + d).y)]
+	for idx in [0, 1, 2, 0, 2, 3]:
+		st.set_color(Color(col.r * 0.92, col.g * 0.92, col.b * 0.92, c.a))
+		st.set_normal(Vector3.UP)
+		st.set_uv(Vector2(0, 0))
+		st.set_uv2(Vector2(w, 0.0))
+		st.add_vertex(rv[idx])
+	dl = dl
 
 ## Postes de luz cada 36 m a los dos lados (dos multimallas: poste y farol)
 func _build_lamps() -> void:
