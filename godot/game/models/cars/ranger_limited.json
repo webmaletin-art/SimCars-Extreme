@@ -1,0 +1,179 @@
+{
+ "id": "ranger_limited",
+ "name": "Ford Ranger Limited",
+ "maker": "Ford",
+ "year": 2023,
+ "kind": "pickup",
+ "wheelBase": 3.555,
+ "trackF": 1.7651,
+ "trackR": 1.7651,
+ "wheelRadius": 0.4288,
+ "comToFront": 1.6353,
+ "length": 5.975,
+ "width": 2.418,
+ "height": 2.094,
+ "front_z": 2.642,
+ "rear_z": -3.333,
+ "drive_side": "L",
+ "paint": [
+  "Color_3CFF00"
+ ],
+ "steer_center": [
+  0.4193,
+  1.2981,
+  0.401
+ ],
+ "steer_radius": 0.208,
+ "steer_axis": [
+  -0.004,
+  0.403,
+  -0.915
+ ],
+ "has_steer_mesh": true,
+ "wheels": {
+  "fr": {
+   "center": [
+    -0.8826,
+    0.4288,
+    1.6353
+   ],
+   "radius": 0.4288,
+   "width": 0.1915
+  },
+  "fl": {
+   "center": [
+    0.8826,
+    0.4288,
+    1.6353
+   ],
+   "radius": 0.4288,
+   "width": 0.1915
+  },
+  "rr": {
+   "center": [
+    -0.8826,
+    0.4288,
+    -1.9197
+   ],
+   "radius": 0.4288,
+   "width": 0.1915
+  },
+  "rl": {
+   "center": [
+    0.8826,
+    0.4288,
+    -1.9197
+   ],
+   "radius": 0.4288,
+   "width": 0.1915
+  }
+ },
+ "parts": {
+  "bonnet": {
+   "center": [
+    0.0002,
+    1.2843,
+    1.8412
+   ],
+   "size": [
+    1.699,
+    0.243,
+    1.433
+   ],
+   "has_dam": false
+  },
+  "boot": {
+   "center": [
+    0.0002,
+    1.0526,
+    -3.189
+   ],
+   "size": [
+    1.575,
+    0.641,
+    0.161
+   ],
+   "has_dam": false
+  },
+  "bump_front": {
+   "center": [
+    0.0002,
+    0.9955,
+    2.4766
+   ],
+   "size": [
+    1.504,
+    0.375,
+    0.329
+   ],
+   "has_dam": false
+  },
+  "bump_rear": {
+   "center": [
+    0.0001,
+    0.5621,
+    -2.8764
+   ],
+   "size": [
+    2.129,
+    0.341,
+    0.914
+   ],
+   "has_dam": false
+  },
+  "door_lf": {
+   "center": [
+    0.9422,
+    1.1543,
+    0.2545
+   ],
+   "size": [
+    0.533,
+    1.354,
+    1.214
+   ],
+   "has_dam": false
+  },
+  "door_rf": {
+   "center": [
+    -0.9423,
+    1.1544,
+    0.2545
+   ],
+   "size": [
+    0.533,
+    1.354,
+    1.214
+   ],
+   "has_dam": false
+  },
+  "door_lr": {
+   "center": [
+    0.8655,
+    1.1526,
+    -0.8031
+   ],
+   "size": [
+    0.357,
+    1.35,
+    0.99
+   ],
+   "has_dam": false
+  },
+  "door_rr": {
+   "center": [
+    -0.8647,
+    1.1526,
+    -0.8031
+   ],
+   "size": [
+    0.357,
+    1.349,
+    0.99
+   ],
+   "has_dam": false
+  }
+ },
+ "tris_total": 73909,
+ "glb_mb": 4.97
+}

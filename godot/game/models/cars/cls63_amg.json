@@ -1,0 +1,192 @@
+{
+ "id": "cls63_amg",
+ "name": "Mercedes-Benz CLS 63 AMG",
+ "maker": "Mercedes-Benz",
+ "year": 2015,
+ "kind": "sedan",
+ "wheelBase": 3.301,
+ "trackF": 1.9401,
+ "trackR": 1.9401,
+ "wheelRadius": 0.4064,
+ "comToFront": 1.5845,
+ "length": 5.955,
+ "width": 2.493,
+ "height": 1.615,
+ "front_z": 2.689,
+ "rear_z": -3.266,
+ "drive_side": "L",
+ "paint": [
+  "remap_body"
+ ],
+ "steer_center": [
+  0.4545,
+  0.9497,
+  0.2925
+ ],
+ "steer_radius": 0.218,
+ "steer_axis": [
+  -0.0,
+  0.354,
+  -0.935
+ ],
+ "has_steer_mesh": true,
+ "wheels": {
+  "fr": {
+   "center": [
+    -0.97,
+    0.4064,
+    1.5845
+   ],
+   "radius": 0.4064,
+   "width": 0.2793
+  },
+  "fl": {
+   "center": [
+    0.97,
+    0.4064,
+    1.5845
+   ],
+   "radius": 0.4064,
+   "width": 0.2793
+  },
+  "rr": {
+   "center": [
+    -0.97,
+    0.4064,
+    -1.7165
+   ],
+   "radius": 0.4064,
+   "width": 0.2793
+  },
+  "rl": {
+   "center": [
+    0.97,
+    0.4064,
+    -1.7165
+   ],
+   "radius": 0.4064,
+   "width": 0.2793
+  }
+ },
+ "parts": {
+  "bonnet": {
+   "center": [
+    -0.0,
+    0.918,
+    1.6289
+   ],
+   "size": [
+    1.975,
+    0.401,
+    1.77
+   ],
+   "has_dam": false
+  },
+  "boot": {
+   "center": [
+    0.0,
+    0.9639,
+    -2.7131
+   ],
+   "size": [
+    1.596,
+    0.51,
+    0.912
+   ],
+   "has_dam": false
+  },
+  "bump_front": {
+   "center": [
+    -0.0,
+    0.4799,
+    2.2146
+   ],
+   "size": [
+    2.219,
+    0.774,
+    0.949
+   ],
+   "has_dam": false
+  },
+  "bump_rear": {
+   "center": [
+    0.0,
+    0.4873,
+    -2.6837
+   ],
+   "size": [
+    2.237,
+    0.636,
+    1.164
+   ],
+   "has_dam": false
+  },
+  "windscreen": {
+   "center": [
+    0.0,
+    1.2658,
+    -0.7815
+   ],
+   "size": [
+    1.751,
+    0.493,
+    3.603
+   ],
+   "has_dam": false
+  },
+  "door_lf": {
+   "center": [
+    0.9879,
+    0.7364,
+    0.1458
+   ],
+   "size": [
+    0.234,
+    0.952,
+    1.4
+   ],
+   "has_dam": false
+  },
+  "door_lr": {
+   "center": [
+    0.9842,
+    0.814,
+    -1.1617
+   ],
+   "size": [
+    0.271,
+    1.062,
+    1.368
+   ],
+   "has_dam": false
+  },
+  "door_rf": {
+   "center": [
+    -0.9879,
+    0.7364,
+    0.1458
+   ],
+   "size": [
+    0.234,
+    0.952,
+    1.4
+   ],
+   "has_dam": false
+  },
+  "door_rr": {
+   "center": [
+    -0.9842,
+    0.8141,
+    -1.1617
+   ],
+   "size": [
+    0.271,
+    1.062,
+    1.368
+   ],
+   "has_dam": false
+  }
+ },
+ "tris_total": 112585,
+ "glb_mb": 5.43
+}

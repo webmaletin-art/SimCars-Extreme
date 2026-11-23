@@ -1,0 +1,769 @@
+extends Control
+## Controles en pantalla de GSkorp Rally, portados de la versión HTML (Input en js/main.js + estilos del HUD):
+##  · VOLANTE: se gira con el dedo (el ángulo del dedo alrededor del centro, ×1,35; hasta 3 vueltas medias) y vuelve solo al soltar.
+##  · BARRA de dirección (modo alternativo): se desliza el dedo a izquierda/derecha.
+##  · PEDAL único: arriba de la mitad acelera, abajo de la mitad frena.
+##  · TIRA DE CAMBIOS (caja manual): deslizar 30 px = un cambio, o tocar ▲ / ▼.
+##  · FRENO DE MANO (mantener apretado).
+##  · ACELERÓMETRO: inclinar el teléfono como un volante (con calibración).
+## Todo se dimensiona en "unidades HTML" (u = alto de pantalla / 393): así el tamaño relativo es el mismo que en la versión web.
+## Multitáctil: cada dedo queda asignado al control que tocó primero.
+
+const Tr := preload("res://game/i18n/tr.gd")
+
+signal camera_pressed
+signal pause_pressed
+signal shot_pressed
+signal rec_pressed
+signal cam_drag(rel: Vector2) # dedo arrastrado sobre la pantalla (cámara libre)
+signal cam_zoom(factor: float) # pellizco con dos dedos
+signal edit_done(saved: bool) # se cerró el modo «Modificar controles» (saved = hay que guardar controls.layout)
+
+# ── opciones (las carga el juego) ──
+var steer_mode := "wheel" # "wheel" | "slider"
+var manual := false
+var gyro_on := false
+var gyro_invert := false
+var gyro_sens := 50.0 # 0..130 → cuánto hay que inclinar
+var gyro_dead := 1.5 # zona muerta (grados): inclinaciones menores no giran
+var gyro_curve := 1.0 # 1 = lineal · >1 = progresiva (poco giro al principio, más al final: más precisión al ir recto)
+var gyro_smooth := 15.0 # reacción del filtro (1/s): más alto = más rápido
+var use_mph := false
+var show_shot := true # botón de captura (opción «Botón de captura»)
+var badge_dot := false # hay algo nuevo en los eventos online (city_modes._badge): un puntito rojo sobre el botón de pausa; nada de letras en la pantalla
+var recording := false # grabando video (el botón se ve rojo)
+var show_speed := true # el panel de velocidad de arriba se oculta con las cámaras interiores (ya está en el tablero)
+var wheel_scale := 1.0 # tamaño del volante/barra (opción «Tamaño del volante»)
+var pedal_scale := 1.0 # tamaño del pedal
+## ── SKIN POR PNG (agregado en el kit) ──────────────────────────────────────────────────────────────
+## skin[nombre] = Texture2D. Si un nombre no está, el control se dibuja por código como en Dream Racing.
+## Nombres: wheel · pedal_bg · pedal_knob · slider_bg · slider_knob · gear_up · gear_up_on · gear_dn · gear_dn_on · gear_mid · handbrake · handbrake_on
+##          btn_cam · btn_pause · btn_shot · btn_rec · btn_rec_on
+var skin := {}
+const SKIN_NAMES := ["wheel", "pedal_bg", "pedal_knob", "slider_bg", "slider_knob", "gear_up", "gear_up_on", "gear_dn", "gear_dn_on", "gear_mid", "handbrake", "handbrake_on", "btn_cam", "btn_pause", "btn_shot", "btn_rec", "btn_rec_on"]
+## Carga <dir>/<nombre>.png de cada nombre que exista (dir puede ser res://… o user://… o una ruta del disco)
+func load_skin(dir: String) -> int:
+	var n := 0
+	for k in SKIN_NAMES:
+		var path := dir.path_join(k + ".png")
+		var img: Image = null
+		if path.begins_with("res://") and ResourceLoader.exists(path):
+			var t = load(path)
+			if t is Texture2D:
+				skin[k] = t
+				n += 1
+				continue
+		if FileAccess.file_exists(path):
+			img = Image.load_from_file(path)
+		if img != null and not img.is_empty():
+			skin[k] = ImageTexture.create_from_image(img)
+			n += 1
+	queue_redraw()
+	return n
+
+func _tex_rect(name: String, r: Rect2) -> bool:
+	if not skin.has(name):
+		return false
+	draw_texture_rect(skin[name], r, false)
+	return true
+
+var layout := {} # id → {x, y, s}: posición (fracción de pantalla) y tamaño relativo, para el editor de controles
+
+# ── salidas ──
+var steer := 0.0 # -1 izquierda … +1 derecha (igual que en la versión HTML)
+var gas := 0.0
+var brake := 0.0
+var handbrake := false
+var shift := 0 # -1 / 0 / +1: cambio pedido este cuadro (ya consumido de la cola)
+
+# ── datos para el tablero ──
+var speed_kmh := 0.0
+var gear_text := "N"
+var rpm_frac := 0.0
+var shift_lo := 0.0 # picada: ventana verde del cambio perfecto en la barra de vueltas (0 = apagada)
+var shift_hi := 0.0
+var limited := false # limitador de vueltas (para la luz del tablero)
+
+# ── estado interno ──
+const WHEEL_LOCK := PI * 0.75 # el volante de la pantalla (nivel Arcade) se traba a ±135° (con el dedo, el acelerómetro y el teclado): ahí la dirección está al máximo
+const WHEEL_LOCK_REAL := PI * 3.0 # el volante REAL se traba a ±540° (tres vueltas de tope a tope, como un auto de calle)
+var wheel_real := 0 # 0 = el volante de siempre (±135°) · 50 = real al 50 % (±270°) · 100 = real (±540°): lo manda el nivel de simulación (race.gd, SIM_PRESETS «wheel» / Opciones → «Volante de la pantalla»)
+var steer_pct := 0.0 # «Ángulo de dirección» del nivel PERSONALIZADO en % (0 = el del auto): con 130 % las ruedas doblan más y el volante real lleva más vueltas (la relación de dirección es fija)
+var wheel_rotation := 0.0
+
+## Hasta dónde gira el volante de la pantalla (rad hacia cada lado): ahí la dirección está al máximo. Pedido del dueño (20/10/2026): «en simulación total quiero un volante real: dar los giros
+## con los dedos de verdad; con el ángulo de dirección en 130 tengo que dar más vueltas, como una dirección hidráulica». El volante real mantiene la relación de dirección de un auto de calle
+## (±540° para el ángulo de dirección del auto) y se escala con el ángulo elegido; el de siempre queda para Arcade e Intermedio.
+func wheel_lock() -> float:
+	if wheel_real <= 0:
+		return WHEEL_LOCK
+	var k := steer_pct / 100.0 if steer_pct >= 70.0 else 1.0
+	return WHEEL_LOCK_REAL * clampf(float(wheel_real) / 100.0, 0.0, 1.0) * k
+var wheel_visual := 0.0
+var wheel_target := 0.0
+var wheel_touch_angle := 0.0
+var slider_target := 0.0
+var pedal_v := 0.0
+var shift_queue := 0
+var _touch := {} # índice de dedo → {kind, …}
+var _flash_up := 0.0
+var _flash_dn := 0.0
+var _gyro_calib := INF
+var _gyro_raw := 0.0
+var _gyro_dt := 0.016
+var _gyro_steer := 0.0
+
+var _drags := {} # índice de dedo → posición (arrastre de cámara)
+const ITEMS := ["wheel", "slider", "pedal", "gears", "handbrake"]
+
+func _ready() -> void:
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+# ───────────────────────── geometría ─────────────────────────
+func _vs() -> Vector2:
+	return get_viewport_rect().size
+
+func _u() -> float:
+	return _vs().y / 393.0
+
+## Rectángulo de un control en pantalla (posición base del HTML + lo que movió el jugador en el editor)
+func rect_of(id: String) -> Rect2:
+	var vs := _vs()
+	var u := _u()
+	var r := Rect2()
+	match id:
+		"wheel":
+			r = Rect2(16.0 * u, vs.y - 30.0 * u - 158.0 * u, 158.0 * u, 158.0 * u)
+		"slider":
+			var w := minf(0.58 * vs.x, 400.0 * u)
+			r = Rect2(16.0 * u, vs.y - 30.0 * u - 64.0 * u, w, 64.0 * u)
+		"pedal":
+			var h := 0.58 * vs.y
+			r = Rect2(vs.x - 18.0 * u - 70.0 * u, (vs.y - h) * 0.5, 70.0 * u, h)
+		"gears":
+			r = Rect2(190.0 * u, vs.y - 30.0 * u - 158.0 * u, 64.0 * u, 158.0 * u)
+		"handbrake":
+			r = Rect2(vs.x - 100.0 * u - 64.0 * u, vs.y - 22.0 * u - 64.0 * u, 64.0 * u, 64.0 * u)
+		"cam":
+			r = Rect2(vs.x - 10.0 * u - 40.0 * u, 10.0 * u, 40.0 * u, 40.0 * u)
+		"pause":
+			r = Rect2(vs.x - 18.0 * u - 80.0 * u, 10.0 * u, 40.0 * u, 40.0 * u)
+		"shot":
+			r = Rect2(vs.x - 26.0 * u - 120.0 * u, 10.0 * u, 40.0 * u, 40.0 * u)
+		"rec":
+			r = Rect2(vs.x - 34.0 * u - 160.0 * u, 10.0 * u, 40.0 * u, 40.0 * u)
+	if id == "wheel" or id == "slider":
+		r = Rect2(r.position.x, r.end.y - r.size.y * wheel_scale, r.size.x * wheel_scale, r.size.y * wheel_scale) # crece hacia arriba y a la derecha
+	elif id == "gears":
+		r.position.x += 158.0 * u * (wheel_scale - 1.0)
+	elif id == "pedal":
+		r = Rect2(r.end.x - r.size.x * pedal_scale, r.position.y + r.size.y * (1.0 - pedal_scale) * 0.5, r.size.x * pedal_scale, r.size.y * pedal_scale)
+	var L: Dictionary = layout.get(id, {})
+	if not L.is_empty():
+		var s: float = float(L.get("s", 1.0))
+		var c := r.get_center() + Vector2(float(L.get("x", 0.0)) * vs.x, float(L.get("y", 0.0)) * vs.y)
+		r = Rect2(c - r.size * s * 0.5, r.size * s)
+	return r
+
+func _active_items() -> Array:
+	var a := ["pedal", "handbrake"]
+	a.append("wheel" if steer_mode == "wheel" else "slider")
+	if manual:
+		a.append("gears")
+	if gyro_on:
+		a.erase("wheel")
+		a.erase("slider")
+	return a
+
+# ───────────────────────── entrada táctil ─────────────────────────
+func _unhandled_input(event: InputEvent) -> void:
+	if editing:
+		_edit_input(event)
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventScreenTouch:
+		var ev := event as InputEventScreenTouch
+		if ev.pressed:
+			_touch_down(ev.index, ev.position)
+		else:
+			_touch_up(ev.index)
+	elif event is InputEventScreenDrag:
+		var ev2 := event as InputEventScreenDrag
+		_touch_move(ev2.index, ev2.position)
+
+func _hit(pos: Vector2) -> String:
+	for id in ["cam", "pause", "shot", "rec"]:
+		if (id == "shot" or id == "rec") and not show_shot:
+			continue
+		if rect_of(id).grow(4.0 * _u()).has_point(pos):
+			return id
+	for id in ["pedal", "handbrake", "gears"]:
+		if id in _active_items() and rect_of(id).grow(6.0 * _u()).has_point(pos):
+			return id
+	if "wheel" in _active_items():
+		var r := rect_of("wheel")
+		if pos.distance_to(r.get_center()) <= r.size.x * 0.56:
+			return "wheel"
+	if "slider" in _active_items() and rect_of("slider").grow(8.0 * _u()).has_point(pos):
+		return "slider"
+	return ""
+
+func _taken(kind: String) -> bool:
+	for k in _touch:
+		if _touch[k]["kind"] == kind:
+			return true
+	return false
+
+func _touch_down(idx: int, pos: Vector2) -> void:
+	var id := _hit(pos)
+	if id == "":
+		# dedo sobre la imagen (no sobre un control): sirve para girar y acercar la cámara libre
+		_touch[idx] = {"kind": "camdrag", "y0": pos.y, "moved": false}
+		_drags[idx] = pos
+		return
+	if _taken(id):
+		return
+	_touch[idx] = {"kind": id, "y0": pos.y, "moved": false}
+	match id:
+		"cam":
+			camera_pressed.emit()
+		"pause":
+			pause_pressed.emit()
+		"shot":
+			shot_pressed.emit()
+		"rec":
+			rec_pressed.emit()
+		"wheel":
+			var c := rect_of("wheel").get_center()
+			wheel_touch_angle = atan2(pos.y - c.y, pos.x - c.x)
+		"slider":
+			_slider_from_x(pos.x)
+		"pedal":
+			_pedal_from_y(pos.y)
+		"handbrake":
+			handbrake = true
+
+func _touch_move(idx: int, pos: Vector2) -> void:
+	if not _touch.has(idx):
+		return
+	var t: Dictionary = _touch[idx]
+	match t["kind"]:
+		"camdrag":
+			var prev: Vector2 = _drags.get(idx, pos)
+			if _drags.size() >= 2:
+				var other := Vector2.ZERO
+				for k2 in _drags:
+					if k2 != idx:
+						other = _drags[k2]
+				var d0 := prev.distance_to(other)
+				var d1 := pos.distance_to(other)
+				if d0 > 20.0:
+					cam_zoom.emit(d1 / d0)
+			else:
+				cam_drag.emit(pos - prev)
+			_drags[idx] = pos
+		"wheel":
+			var c := rect_of("wheel").get_center()
+			var a := atan2(pos.y - c.y, pos.x - c.x)
+			var d := wrapf(a - wheel_touch_angle, -PI, PI)
+			wheel_touch_angle = a
+			# el volante gira EXACTAMENTE lo que gira el dedo y se traba donde la dirección llega al tope (19/10/2026, pedido del dueño: «se le podía dar 3 vueltas y la
+			# rueda se trababa antes»: antes el dibujo llegaba a ±540° y la dirección ya estaba al máximo a los ±180°)
+			var lock := wheel_lock()
+			wheel_rotation = clampf(wheel_rotation + d, -lock, lock)
+			wheel_target = wheel_rotation / lock
+		"slider":
+			_slider_from_x(pos.x)
+		"pedal":
+			_pedal_from_y(pos.y)
+		"gears":
+			var dy: float = pos.y - float(t["y0"])
+			if absf(dy) > 30.0 * _u():
+				_request_shift(1 if dy < 0.0 else -1)
+				t["y0"] = pos.y
+				t["moved"] = true
+
+func _touch_up(idx: int) -> void:
+	if not _touch.has(idx):
+		return
+	var t: Dictionary = _touch[idx]
+	_touch.erase(idx)
+	_drags.erase(idx)
+	match t["kind"]:
+		"wheel":
+			wheel_target = 0.0
+		"slider":
+			slider_target = 0.0
+		"pedal":
+			pedal_v = 0.0
+			gas = 0.0
+			brake = 0.0
+		"handbrake":
+			handbrake = false
+		"gears":
+			if not t["moved"]:
+				var r := rect_of("gears")
+				_request_shift(1 if float(t["y0"]) < r.position.y + r.size.y * 0.5 else -1)
+
+func _slider_from_x(x: float) -> void:
+	var r := rect_of("slider")
+	var rel := clampf((x - r.position.x) / r.size.x, 0.0, 1.0)
+	slider_target = clampf((rel - 0.5) * 2.0, -1.0, 1.0)
+
+func _pedal_from_y(y: float) -> void:
+	var r := rect_of("pedal")
+	var rel := clampf((r.end.y - y) / r.size.y, 0.0, 1.0)
+	var v := clampf((rel - 0.5) * 2.0, -1.0, 1.0)
+	pedal_v = v
+	gas = v if v >= 0.0 else 0.0
+	brake = -v if v < 0.0 else 0.0
+
+func _request_shift(d: int) -> void:
+	shift_queue = clampi(shift_queue + d, -3, 3)
+	if d > 0:
+		_flash_up = 0.14
+	else:
+		_flash_dn = 0.14
+
+# ───────────────────────── acelerómetro ─────────────────────────
+func gyro_tilt_for_full() -> float:
+	return maxf(9.0, 55.0 - gyro_sens * 0.40) # grados de giro para el máximo (igual que la versión HTML; la sensibilidad extrema llega a ~9°)
+
+## Curva del volante por inclinación: zona muerta, hasta el giro máximo y respuesta lineal o progresiva
+func gyro_map(angle_deg: float) -> float:
+	var full := gyro_tilt_for_full()
+	var a := absf(angle_deg)
+	if a <= gyro_dead:
+		return 0.0
+	var x := clampf((a - gyro_dead) / maxf(1.0, full - gyro_dead), 0.0, 1.0)
+	return signf(angle_deg) * pow(x, gyro_curve)
+
+func recalibrate_gyro() -> void:
+	_gyro_calib = INF
+	_gyro_raw = 0.0
+	_gyro_steer = 0.0
+
+func gyro_value() -> float:
+	return _gyro_steer
+
+## Gravedad en el plano de la pantalla: girar el teléfono como un volante (cualquier apaisado)
+func _feed_gyro() -> void:
+	var g := Input.get_accelerometer()
+	if Vector2(g.x, g.y).length() < 3.0:
+		return
+	var cur := rad_to_deg(atan2(g.y, g.x))
+	if _gyro_calib == INF:
+		_gyro_calib = cur
+		return
+	var delta := cur - _gyro_calib
+	if delta > 180.0:
+		delta -= 360.0
+	if delta < -180.0:
+		delta += 360.0
+	_gyro_raw += (delta - _gyro_raw) * (1.0 - exp(-_gyro_dt * gyro_smooth))
+	_gyro_steer = clampf((-1.0 if gyro_invert else 1.0) * gyro_map(_gyro_raw), -1.0, 1.0)
+
+# ───────────────────────── actualización por cuadro ─────────────────────────
+func update_inputs(dt: float) -> void:
+	var kb_steer := 0.0
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		kb_steer -= 1.0
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		kb_steer += 1.0
+	if gyro_on:
+		_gyro_dt = clampf(dt, 0.001, 0.1)
+		_feed_gyro()
+	var wheel_contact := _taken("wheel")
+	var slider_contact := _taken("slider")
+	var desired: float
+	if gyro_on:
+		desired = _gyro_steer
+	elif steer_mode == "slider":
+		desired = slider_target if slider_contact else kb_steer
+	else:
+		desired = wheel_target if wheel_contact else kb_steer
+	var rate := 13.0 if desired == 0.0 else 9.5
+	steer += (desired - steer) * (1.0 - exp(-dt * rate))
+	if steer_mode == "wheel":
+		if gyro_on:
+			wheel_rotation += (_gyro_steer * wheel_lock() - wheel_rotation) * (1.0 - exp(-dt * 15.0))
+		elif not wheel_contact:
+			var target_rot := kb_steer * wheel_lock() if kb_steer != 0.0 else 0.0
+			wheel_rotation += (target_rot - wheel_rotation) * (1.0 - exp(-dt * rate)) # (vuelve al centro al mismo ritmo que la dirección: antes tardaba el doble)
+		wheel_visual = wheel_rotation if wheel_contact else wheel_visual + (wheel_rotation - wheel_visual) * (1.0 - exp(-dt * 30.0))
+	# pedales: el dedo manda; sin dedo, el teclado
+	if not _taken("pedal"):
+		var kg := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)
+		var kbk := Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)
+		gas = 1.0 if kg else 0.0
+		brake = 1.0 if (kbk and not kg) else 0.0
+		pedal_v = gas - brake
+	if not _taken("handbrake"):
+		handbrake = Input.is_key_pressed(KEY_SPACE)
+	if Input.is_key_pressed(KEY_E) and not _key_e:
+		_request_shift(1)
+	if Input.is_key_pressed(KEY_Q) and not _key_q:
+		_request_shift(-1)
+	_key_e = Input.is_key_pressed(KEY_E)
+	_key_q = Input.is_key_pressed(KEY_Q)
+	shift = 1 if shift_queue > 0 else (-1 if shift_queue < 0 else 0)
+	shift_queue -= shift
+	_flash_up = maxf(0.0, _flash_up - dt)
+	_flash_dn = maxf(0.0, _flash_dn - dt)
+	queue_redraw()
+
+var _key_e := false
+var _key_q := false
+
+# ───────────────────────── dibujo ─────────────────────────
+func _draw() -> void:
+	var u := _u()
+	var vs := _vs()
+	var font := ThemeDB.fallback_font
+	if show_speed:
+		_draw_speed_panel(font, u, vs)
+	if steer_mode == "wheel" and not gyro_on:
+		_draw_wheel(rect_of("wheel"))
+	elif steer_mode == "slider" and not gyro_on:
+		_draw_slider(rect_of("slider"), font, u)
+	if gyro_on:
+		draw_string(font, Vector2(vs.x * 0.5 - 150.0 * u, vs.y - 12.0 * u), "ACELERÓMETRO ACTIVADO", HORIZONTAL_ALIGNMENT_CENTER, 300.0 * u, int(12.0 * u), Color(0.6, 1.0, 0.6, 0.9))
+	_draw_pedal(rect_of("pedal"), font, u)
+	if manual or editing:
+		_draw_gears(rect_of("gears"), font, u)
+	_draw_round_button(rect_of("cam"), "CAM", false, Color(1.0, 0.8, 0.4), Color(0.2, 0.16, 0.08), Color(1.0, 0.82, 0.54), font, u * 0.5)
+	_draw_round_button(rect_of("pause"), "II", false, Color(0.7, 0.75, 0.85), Color(0.12, 0.14, 0.18), Color(0.8, 0.85, 0.95), font, u * 0.6)
+	if badge_dot: # (pausa → EVENTOS)
+		var pr := rect_of("pause")
+		var bc := pr.position + Vector2(pr.size.x * 0.9, pr.size.y * 0.1)
+		draw_circle(bc, 8.0 * u, Color(1, 1, 1, 0.95))
+		draw_circle(bc, 6.2 * u, Color(0.95, 0.16, 0.2))
+	if show_shot:
+		var sr := rect_of("shot")
+		_draw_round_button(sr, "", false, Color(0.7, 0.85, 1.0), Color(0.1, 0.15, 0.2), Color(0.8, 0.92, 1.0), font, u * 0.6)
+		# ícono de cámara: cuerpo, visor y lente
+		var cc := sr.get_center()
+		var w := sr.size.x * 0.46
+		var h := sr.size.x * 0.32
+		var col := Color(0.85, 0.93, 1.0)
+		draw_rect(Rect2(cc.x - w * 0.5, cc.y - h * 0.4, w, h), col, false, maxf(1.5, u * 1.4))
+		draw_rect(Rect2(cc.x - w * 0.22, cc.y - h * 0.65, w * 0.44, h * 0.25), col, true)
+		draw_arc(cc + Vector2(0, h * 0.1), h * 0.28, 0.0, TAU, 20, col, maxf(1.5, u * 1.4))
+	if show_shot:
+		var rr := rect_of("rec")
+		_draw_round_button(rr, "", recording, Color(1.0, 0.3, 0.3), Color(0.25, 0.08, 0.08), Color(1.0, 0.5, 0.5), font, u * 0.6)
+		var rc := rr.get_center()
+		if recording:
+			draw_rect(Rect2(rc - Vector2(rr.size.x * 0.17, rr.size.x * 0.17), Vector2(rr.size.x * 0.34, rr.size.x * 0.34)), Color(1.0, 0.35, 0.35), true) # parar
+		else:
+			draw_circle(rc, rr.size.x * 0.2, Color(1.0, 0.3, 0.3)) # grabar
+	_draw_round_button(rect_of("handbrake"), "H", handbrake, Color(1.0, 0.24, 0.19), Color(0.35, 0.12, 0.12), Color(1.0, 0.47, 0.43), font, u)
+	if editing:
+		_draw_edit_marks(font, u)
+
+# ───────────────────────── modo «Modificar controles» ─────────────────────────
+## Un dedo sobre un control lo arrastra adonde quieras (incluso al centro del volante); dos dedos (pinza) lo agrandan o lo achican. Se guarda con GUARDAR y el cambio queda para siempre.
+var editing := false
+var _edit_touch := {} # índice de dedo → id del control que arrastra
+var _edit_pinch_d := 0.0
+var _edit_bar: Control
+
+func _edit_ids() -> Array:
+	var a := ["cam", "pause", "handbrake", "gears", "pedal", "wheel" if steer_mode == "wheel" else "slider"]
+	if show_shot:
+		a.insert(2, "shot")
+		a.insert(3, "rec")
+	return a
+
+func set_editing(on: bool) -> void:
+	editing = on
+	_edit_touch.clear()
+	if _edit_bar != null:
+		_edit_bar.queue_free()
+		_edit_bar = null
+	if on:
+		_touch.clear()
+		_drags.clear()
+		wheel_target = 0.0
+		_build_edit_bar()
+	queue_redraw()
+
+func _build_edit_bar() -> void:
+	_edit_bar = Control.new()
+	_edit_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_edit_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_edit_bar)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	row.position = Vector2(_vs().x * 0.5 - 330.0, 14.0)
+	_edit_bar.add_child(row)
+	for spec in [["✔ " + Tr.t("GUARDAR"), 0], ["↺ " + Tr.t("RESTABLECER"), 1], ["✕ " + Tr.t("CANCELAR"), 2]]:
+		var b := Button.new()
+		b.text = str(spec[0])
+		b.custom_minimum_size = Vector2(200, 60)
+		b.add_theme_font_size_override("font_size", 20)
+		b.mouse_filter = Control.MOUSE_FILTER_STOP
+		var which: int = int(spec[1])
+		b.pressed.connect(func() -> void:
+			if which == 1:
+				layout = {}
+				queue_redraw()
+				return
+			edit_done.emit(which == 0))
+		row.add_child(b)
+	var hint := Label.new()
+	hint.text = Tr.t("Arrastrá cada control con un dedo · con dos dedos lo agrandás o lo achicás")
+	hint.add_theme_font_size_override("font_size", 18)
+	hint.add_theme_color_override("font_color", Color(1.0, 0.95, 0.6))
+	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	hint.add_theme_constant_override("outline_size", 6)
+	hint.position = Vector2(_vs().x * 0.5 - 330.0, 84.0)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_edit_bar.add_child(hint)
+
+func _edit_hit(pos: Vector2) -> String:
+	for id in _edit_ids():
+		if id == "wheel":
+			var r := rect_of("wheel")
+			if pos.distance_to(r.get_center()) <= r.size.x * 0.56:
+				return "wheel"
+		elif rect_of(str(id)).grow(8.0 * _u()).has_point(pos):
+			return str(id)
+	return ""
+
+func _edit_layout_of(id: String) -> Dictionary:
+	var d: Dictionary = layout.get(id, {})
+	if d.is_empty():
+		d = {"x": 0.0, "y": 0.0, "s": 1.0}
+	layout[id] = d
+	return d
+
+func _edit_clamp(id: String) -> void:
+	var vs := _vs()
+	var d := _edit_layout_of(id)
+	var c := rect_of(id).get_center()
+	var cc := c.clamp(vs * 0.04, vs * 0.96)
+	d["x"] = float(d["x"]) + (cc.x - c.x) / vs.x
+	d["y"] = float(d["y"]) + (cc.y - c.y) / vs.y
+
+func _edit_input(event: InputEvent) -> void:
+	var vs := _vs()
+	if event is InputEventScreenTouch:
+		var ev := event as InputEventScreenTouch
+		_edit_pinch_d = 0.0
+		if ev.pressed:
+			_edit_pos[ev.index] = ev.position
+			var id := _edit_hit(ev.position)
+			if id != "":
+				_edit_touch[ev.index] = id
+		else:
+			_edit_pos.erase(ev.index)
+			_edit_touch.erase(ev.index)
+		return
+	if not (event is InputEventScreenDrag):
+		return
+	var ed := event as InputEventScreenDrag
+	_edit_pos[ed.index] = ed.position
+	if _edit_pos.size() >= 2 and not _edit_touch.is_empty():
+		# pinza: el control que sostiene un dedo cambia de tamaño con la distancia entre los dos dedos
+		var ks := _edit_pos.keys()
+		var d_now: float = (_edit_pos[ks[0]] as Vector2).distance_to(_edit_pos[ks[1]])
+		var id2: String = str(_edit_touch.values()[0])
+		if _edit_pinch_d > 12.0 and d_now > 12.0:
+			var dd := _edit_layout_of(id2)
+			dd["s"] = clampf(float(dd["s"]) * d_now / _edit_pinch_d, 0.45, 2.8)
+			_edit_clamp(id2)
+		_edit_pinch_d = d_now
+	elif _edit_touch.has(ed.index):
+		var id3: String = _edit_touch[ed.index]
+		var d3 := _edit_layout_of(id3)
+		d3["x"] = float(d3["x"]) + ed.relative.x / vs.x
+		d3["y"] = float(d3["y"]) + ed.relative.y / vs.y
+		_edit_clamp(id3)
+	queue_redraw()
+
+var _edit_pos := {} # posición actual de cada dedo en el editor
+
+func _draw_edit_marks(font: Font, u: float) -> void:
+	for id in _edit_ids():
+		var r := rect_of(str(id))
+		var held := false
+		for k in _edit_touch:
+			if _edit_touch[k] == id:
+				held = true
+		var col := Color(1.0, 0.9, 0.3, 0.95) if held else Color(1.0, 1.0, 1.0, 0.55)
+		draw_rect(r.grow(3.0), col, false, maxf(2.0, u * 1.6))
+
+func _draw_speed_panel(font: Font, u: float, vs: Vector2) -> void:
+	var w := 150.0 * u
+	var x0 := vs.x * 0.5 - w * 0.5
+	var y0 := 12.0 * u
+	draw_rect(Rect2(x0, y0, w, 74.0 * u), Color(0.04, 0.06, 0.09, 0.55), true)
+	draw_rect(Rect2(x0, y0, w, 74.0 * u), Color(1, 1, 1, 0.10), false, 1.0)
+	var sp := speed_kmh * (0.6214 if use_mph else 1.0)
+	var txt := "%d" % int(round(sp))
+	draw_string(font, Vector2(x0, y0 + 36.0 * u), txt, HORIZONTAL_ALIGNMENT_CENTER, w - 34.0 * u, int(34.0 * u), Color(1, 1, 1))
+	draw_string(font, Vector2(x0 + w - 44.0 * u, y0 + 36.0 * u), "mph" if use_mph else "km/h", HORIZONTAL_ALIGNMENT_LEFT, -1, int(10.0 * u), Color(0.56, 0.64, 0.74))
+	var gr := Rect2(vs.x * 0.5 - 15.0 * u, y0 + 42.0 * u, 30.0 * u, 16.0 * u)
+	draw_rect(gr, Color(0.35, 0.63, 1.0, 0.2), true)
+	draw_rect(gr, Color(0.35, 0.63, 1.0, 0.4), false, 1.0)
+	draw_string(font, Vector2(gr.position.x, gr.position.y + 12.5 * u), gear_text, HORIZONTAL_ALIGNMENT_CENTER, gr.size.x, int(11.0 * u), Color(1, 1, 1))
+	# barra de vueltas
+	var bar := Rect2(x0 + 10.0 * u, y0 + 64.0 * u, w - 20.0 * u, 4.0 * u)
+	if shift_hi > 0.0:
+		bar = Rect2(x0 + 4.0 * u, y0 + 62.0 * u, w - 8.0 * u, 9.0 * u) # picada: barra más gruesa con la zona de cambio
+	draw_rect(bar, Color(1, 1, 1, 0.12), true)
+	if shift_hi > 0.0:
+		draw_rect(Rect2(bar.position.x + bar.size.x * shift_lo, bar.position.y - 2.0 * u, bar.size.x * (shift_hi - shift_lo), bar.size.y + 4.0 * u), Color(0.2, 1.0, 0.45, 0.55), true)
+		if rpm_frac >= shift_lo and rpm_frac <= shift_hi:
+			draw_string(font, Vector2(x0, y0 + 90.0 * u), Tr.t("▲ ¡CAMBIÁ!"), HORIZONTAL_ALIGNMENT_CENTER, w, int(16.0 * u), Color(0.2, 1.0, 0.45))
+	var f := clampf(rpm_frac, 0.0, 1.0)
+	var col := Color(0.4, 0.71, 1.0).lerp(Color(1.0, 0.82, 0.4), clampf(f / 0.75, 0.0, 1.0))
+	if f > 0.75:
+		col = Color(1.0, 0.82, 0.4).lerp(Color(1.0, 0.3, 0.37), (f - 0.75) / 0.25)
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * f, bar.size.y)), col, true)
+
+func _draw_wheel(r: Rect2) -> void:
+	if skin.has("wheel"):
+		# el PNG del volante se dibuja entero y se gira alrededor de su centro (wheel_visual = ángulo en radianes)
+		draw_set_transform(r.get_center(), wheel_visual, Vector2.ONE)
+		draw_texture_rect(skin["wheel"], Rect2(-r.size * 0.5, r.size), false)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
+	var k := r.size.x / 200.0
+	draw_set_transform(r.get_center(), wheel_visual, Vector2(k, k))
+	draw_circle(Vector2.ZERO, 94.0, Color("1a1d22"))
+	draw_arc(Vector2.ZERO, 82.0, 0.0, TAU, 72, Color("2a2f38"), 20.0, true)
+	draw_rect(Rect2(-6, -86, 12, 76), Color("2a2f38"))
+	draw_rect(Rect2(-86, -6, 172, 12), Color("2a2f38"))
+	draw_circle(Vector2.ZERO, 26.0, Color("14181e"))
+	draw_arc(Vector2.ZERO, 26.0, 0.0, TAU, 40, Color("5a6472"), 3.0, true)
+	draw_circle(Vector2.ZERO, 7.0, Color("ff6a08"))
+	draw_rect(Rect2(-6, -94, 12, 18), Color("ff6a08"))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func _draw_slider(r: Rect2, font: Font, u: float) -> void:
+	if skin.has("slider_bg"):
+		_tex_rect("slider_bg", r)
+		var vv := slider_target if _taken("slider") else steer
+		var kk := 46.0 * u
+		var kc := Vector2(r.get_center().x + vv * 0.38 * r.size.x, r.get_center().y)
+		if not _tex_rect("slider_knob", Rect2(kc - Vector2(kk, kk) * 0.5, Vector2(kk, kk))):
+			draw_circle(kc, kk * 0.5, Color("6db9ff"))
+		return
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color("101318")
+	sb.set_corner_radius_all(int(32.0 * u))
+	sb.border_color = Color("4a4f57")
+	sb.set_border_width_all(2)
+	draw_style_box(sb, r)
+	var c := r.get_center()
+	draw_line(Vector2(c.x, r.position.y + 6.0 * u), Vector2(c.x, r.end.y - 6.0 * u), Color(1, 1, 1, 0.5), 2.0)
+	var v := slider_target if _taken("slider") else steer
+	var kx := c.x + v * 0.38 * r.size.x
+	draw_circle(Vector2(kx, c.y), 23.0 * u, Color("0a0d12"))
+	draw_arc(Vector2(kx, c.y), 23.0 * u, 0.0, TAU, 32, Color("6db9ff"), 2.0, true)
+	draw_string(font, Vector2(r.position.x + 14.0 * u, c.y + 6.0 * u), "←", HORIZONTAL_ALIGNMENT_LEFT, -1, int(16.0 * u), Color("a8d0ff"))
+	draw_string(font, Vector2(r.end.x - 30.0 * u, c.y + 6.0 * u), "→", HORIZONTAL_ALIGNMENT_LEFT, -1, int(16.0 * u), Color("a8d0ff"))
+
+func _draw_pedal(r: Rect2, font: Font, u: float) -> void:
+	if skin.has("pedal_bg"):
+		_tex_rect("pedal_bg", r)
+		var m := r.position.y + r.size.y * 0.5
+		var inn := r.grow(-3.0)
+		if pedal_v > 0.0: # aviso de cuánto se pisa: verde arriba (gas) / rojo abajo (freno), translúcido sobre el PNG
+			var hh := r.size.y * 0.5 * pedal_v
+			_grad_rect(Rect2(inn.position.x, m - hh, inn.size.x, hh), Color(0.65, 1, 0.67, 0.12), Color(0.04, 0.3, 0.06, 0.55))
+		elif pedal_v < 0.0:
+			var h3 := r.size.y * 0.5 * -pedal_v
+			_grad_rect(Rect2(inn.position.x, m, inn.size.x, h3), Color(0.24, 0, 0, 0.55), Color(1, 0.6, 0.6, 0.12))
+		var kk2 := 40.0 * u
+		var kc2 := Vector2(r.get_center().x, r.end.y - (0.5 + pedal_v * 0.38) * r.size.y)
+		if not _tex_rect("pedal_knob", Rect2(kc2 - Vector2(kk2, kk2) * 0.5, Vector2(kk2, kk2))):
+			draw_circle(kc2, kk2 * 0.5, Color("6db9ff"))
+		return
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color("0d1015")
+	sb.set_corner_radius_all(int(35.0 * u))
+	sb.border_color = Color("4a4f57")
+	sb.set_border_width_all(2)
+	draw_style_box(sb, r)
+	var mid := r.position.y + r.size.y * 0.5
+	var inner := r.grow(-3.0)
+	if pedal_v > 0.0:
+		var h := r.size.y * 0.5 * pedal_v
+		_grad_rect(Rect2(inner.position.x, mid - h, inner.size.x, h), Color("a6ffab"), Color("0b4b10"))
+	elif pedal_v < 0.0:
+		var h2 := r.size.y * 0.5 * -pedal_v
+		_grad_rect(Rect2(inner.position.x, mid, inner.size.x, h2), Color("3c0000"), Color("ff9a9a"))
+	draw_line(Vector2(r.position.x + r.size.x * 0.1, mid), Vector2(r.end.x - r.size.x * 0.1, mid), Color(1, 1, 1, 0.65), 2.0)
+	var ky := r.end.y - (0.5 + pedal_v * 0.38) * r.size.y
+	var kr := 20.0 * u
+	draw_circle(Vector2(r.get_center().x, ky), kr, Color("0a0d12"))
+	draw_arc(Vector2(r.get_center().x, ky), kr, 0.0, TAU, 32, Color("6db9ff"), 2.0, true)
+	draw_string(font, Vector2(r.position.x, r.position.y + 16.0 * u), "GAS", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, int(9.0 * u), Color("a6ffab"))
+	draw_string(font, Vector2(r.position.x, r.end.y - 8.0 * u), "FRENO", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, int(9.0 * u), Color("ff9a9a"))
+
+## Rectángulo con degradé vertical: "top" arriba y "bot" abajo
+func _grad_rect(r: Rect2, top: Color, bot: Color) -> void:
+	var pts := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+	draw_polygon(pts, PackedColorArray([top, top, bot, bot]))
+
+func _draw_gears(r: Rect2, font: Font, u: float) -> void:
+	if skin.has("gear_up"):
+		var bh2 := (r.size.y - 12.0 * u) / 3.0
+		var up2 := Rect2(r.position, Vector2(r.size.x, bh2))
+		var mid2 := Rect2(r.position + Vector2(0, bh2 + 6.0 * u), Vector2(r.size.x, bh2))
+		var dn2 := Rect2(r.position + Vector2(0, 2.0 * (bh2 + 6.0 * u)), Vector2(r.size.x, bh2))
+		_tex_rect("gear_up_on" if (_flash_up > 0.0 and skin.has("gear_up_on")) else "gear_up", up2)
+		_tex_rect("gear_dn_on" if (_flash_dn > 0.0 and skin.has("gear_dn_on")) else "gear_dn", dn2)
+		if not _tex_rect("gear_mid", mid2):
+			draw_rect(mid2, Color(0.04, 0.055, 0.08, 0.55), true)
+		draw_string(font, Vector2(mid2.position.x, mid2.position.y + mid2.size.y * 0.5 + 9.0 * u), gear_text, HORIZONTAL_ALIGNMENT_CENTER, mid2.size.x, int(26.0 * u), Color(1, 1, 1))
+		return
+	var bh := (r.size.y - 12.0 * u) / 3.0
+	var up := Rect2(r.position, Vector2(r.size.x, bh))
+	var mid := Rect2(r.position + Vector2(0, bh + 6.0 * u), Vector2(r.size.x, bh))
+	var dn := Rect2(r.position + Vector2(0, 2.0 * (bh + 6.0 * u)), Vector2(r.size.x, bh))
+	for pair in [[up, "▲", "SUBIR", _flash_up > 0.0], [dn, "▼", "BAJAR", _flash_dn > 0.0]]:
+		var b: Rect2 = pair[0]
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.23, 0.63, 1.0, 0.55) if pair[3] else Color(0.08, 0.1, 0.13, 0.62)
+		sb.set_corner_radius_all(int(14.0 * u))
+		sb.border_color = Color(0.56, 0.82, 1.0) if pair[3] else Color(1, 1, 1, 0.25)
+		sb.set_border_width_all(1)
+		draw_style_box(sb, b)
+		draw_string(font, Vector2(b.position.x, b.position.y + b.size.y * 0.5 + 2.0 * u), pair[1], HORIZONTAL_ALIGNMENT_CENTER, b.size.x, int(24.0 * u), Color("e8f1ff"))
+		draw_string(font, Vector2(b.position.x, b.position.y + b.size.y * 0.5 + 16.0 * u), pair[2], HORIZONTAL_ALIGNMENT_CENTER, b.size.x, int(9.0 * u), Color(0.9, 0.95, 1.0, 0.7))
+	draw_rect(mid, Color(0.04, 0.055, 0.08, 0.55), true)
+	draw_string(font, Vector2(mid.position.x, mid.position.y + mid.size.y * 0.5 + 9.0 * u), gear_text, HORIZONTAL_ALIGNMENT_CENTER, mid.size.x, int(26.0 * u), Color(1, 1, 1))
+
+func _draw_round_button(r: Rect2, label: String, active: bool, glow: Color, dark: Color, ring: Color, font: Font, u: float, fill := -1.0) -> void:
+	var sk := ""
+	match label:
+		"H": sk = "handbrake"
+		"CAM": sk = "btn_cam"
+		"II": sk = "btn_pause"
+	if sk != "" and skin.has(sk + ("_on" if active else "")) :
+		_tex_rect(sk + ("_on" if active else ""), r)
+		return
+	if sk != "" and active and skin.has(sk):
+		_tex_rect(sk, r)
+		draw_circle(r.get_center(), r.size.x * 0.5, Color(glow.r, glow.g, glow.b, 0.35))
+		return
+	if sk != "" and skin.has(sk):
+		_tex_rect(sk, r)
+		return
+	var c := r.get_center()
+	var rad := r.size.x * 0.5
+	if active:
+		draw_circle(c, rad + 6.0 * u, Color(glow.r, glow.g, glow.b, 0.25))
+	draw_circle(c, rad, glow.darkened(0.45) if active else dark.darkened(0.55))
+	if fill >= 0.0:
+		var h := 2.0 * rad * clampf(fill, 0.0, 1.0)
+		var cl := Rect2(c.x - rad + 2.0, c.y + rad - h, 2.0 * rad - 4.0, h)
+		draw_rect(cl, Color(0.16, 0.6, 1.0, 0.35), true)
+	draw_arc(c, rad - 1.0, 0.0, TAU, 40, Color(ring.r, ring.g, ring.b, 1.0 if active else 0.6), 2.0, true)
+	draw_string(font, Vector2(r.position.x, c.y + 7.0 * u), label, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, int(20.0 * u), Color(1, 1, 1) if active else ring.lightened(0.3))

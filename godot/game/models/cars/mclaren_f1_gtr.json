@@ -1,0 +1,192 @@
+{
+ "id": "mclaren_f1_gtr",
+ "name": "McLaren F1 GTR",
+ "maker": "McLaren",
+ "year": 1995,
+ "kind": "race",
+ "wheelBase": 2.9841,
+ "trackF": 1.7657,
+ "trackR": 1.6974,
+ "wheelRadius": 0.3419,
+ "comToFront": 1.7308,
+ "length": 4.744,
+ "width": 2.243,
+ "height": 1.192,
+ "front_z": 2.875,
+ "rear_z": -1.869,
+ "drive_side": "C",
+ "paint": [
+  "remap"
+ ],
+ "steer_center": [
+  -0.0002,
+  0.6786,
+  1.0644
+ ],
+ "steer_radius": 0.174,
+ "steer_axis": [
+  0.003,
+  0.28,
+  -0.96
+ ],
+ "has_steer_mesh": true,
+ "wheels": {
+  "fr": {
+   "center": [
+    -0.8829,
+    0.3416,
+    1.7308
+   ],
+   "radius": 0.3416,
+   "width": 0.3135
+  },
+  "rr": {
+   "center": [
+    -0.8487,
+    0.3422,
+    -1.2533
+   ],
+   "radius": 0.3422,
+   "width": 0.3675
+  },
+  "fl": {
+   "center": [
+    0.8829,
+    0.3416,
+    1.7308
+   ],
+   "radius": 0.3416,
+   "width": 0.3135
+  },
+  "rl": {
+   "center": [
+    0.8487,
+    0.3422,
+    -1.2533
+   ],
+   "radius": 0.3422,
+   "width": 0.3675
+  }
+ },
+ "parts": {
+  "bonnet": {
+   "center": [
+    -0.0004,
+    0.5097,
+    2.2504
+   ],
+   "size": [
+    0.747,
+    0.317,
+    0.685
+   ],
+   "has_dam": true
+  },
+  "bump_front": {
+   "center": [
+    0.0,
+    0.1928,
+    2.4949
+   ],
+   "size": [
+    2.036,
+    0.247,
+    0.757
+   ],
+   "has_dam": true
+  },
+  "bump_rear": {
+   "center": [
+    -0.0,
+    0.475,
+    -1.5461
+   ],
+   "size": [
+    1.983,
+    0.788,
+    0.646
+   ],
+   "has_dam": true
+  },
+  "boot": {
+   "center": [
+    0.0,
+    0.9111,
+    -0.8101
+   ],
+   "size": [
+    1.836,
+    0.549,
+    2.008
+   ],
+   "has_dam": true
+  },
+  "windscreen": {
+   "center": [
+    -0.0,
+    0.8811,
+    0.6529
+   ],
+   "size": [
+    1.484,
+    0.439,
+    2.425
+   ],
+   "has_dam": true
+  },
+  "door_lf": {
+   "center": [
+    0.6461,
+    0.6131,
+    0.6415
+   ],
+   "size": [
+    0.879,
+    1.098,
+    1.631
+   ],
+   "has_dam": true
+  },
+  "door_rf": {
+   "center": [
+    -0.6472,
+    0.6116,
+    0.6426
+   ],
+   "size": [
+    0.881,
+    1.101,
+    1.629
+   ],
+   "has_dam": true
+  },
+  "door_lr": {
+   "center": [
+    0.9349,
+    0.4008,
+    -0.2198
+   ],
+   "size": [
+    0.138,
+    0.689,
+    1.489
+   ],
+   "has_dam": true
+  },
+  "door_rr": {
+   "center": [
+    -0.8688,
+    0.4024,
+    -0.2202
+   ],
+   "size": [
+    0.269,
+    0.692,
+    1.495
+   ],
+   "has_dam": true
+  }
+ },
+ "tris_total": 47295,
+ "glb_mb": 5.89
+}
