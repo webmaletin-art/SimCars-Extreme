@@ -24,6 +24,7 @@ var parts := {} # nombre → {node, ok, dam, center (marco del auto), size, hp, 
 var steer_node: Node3D
 var steer_axis := Vector3(0, 0.34, -0.94)
 var steer_vis := 0.0
+var steer_radius_real := 0.0 # radio real del volante separado por geometría (0 = el del JSON)
 var debris_root: Node # donde caen las piezas (el mundo)
 var damage_total := 0.0 # 0..100 daño acumulado de la carrocería (para el tablero)
 var _meshes: Array = [] # [{mi, owner: parte o ""}]
@@ -174,14 +175,45 @@ func _extract_steer() -> void:
 				var wu := PackedVector2Array()
 				var ns: Variant = a[Mesh.ARRAY_NORMAL]
 				var uvs: Variant = a[Mesh.ARRAY_TEX_UV]
-				for k in range(0, idx.size() - 2, 3):
+				var ntri := idx.size() / 3
+				var sel := PackedByteArray()
+				sel.resize(ntri)
+				var vsel := {}
+				var axd := steer_axis_of(meta)
+				for k in ntri:
 					var inside := true
 					for q in 3:
-						var d: Vector3 = T * vs[idx[k + q]] - c
-						var axial := d.dot(steer_axis_of(meta))
-						if (d - steer_axis_of(meta) * axial).length() > r or absf(axial) > half:
+						var d: Vector3 = T * vs[idx[k * 3 + q]] - c
+						var axial := d.dot(axd)
+						if (d - axd * axial).length() > r or absf(axial) > half:
 							inside = false
 							break
+					if inside:
+						sel[k] = 1
+						for q in 3:
+							vsel[idx[k * 3 + q]] = true
+				# el volante completo: se suman las caras pegadas a las ya elegidas (comparten vértices) dentro de una zona algo más grande, para que no quede ningún pedazo
+				for _pass in 3:
+					for k in ntri:
+						if sel[k] == 1:
+							continue
+						var shared := 0
+						var okb := true
+						for q in 3:
+							var vi := idx[k * 3 + q]
+							if vsel.has(vi):
+								shared += 1
+							var d2: Vector3 = T * vs[vi] - c
+							var ax2 := d2.dot(axd)
+							if (d2 - axd * ax2).length() > r * 1.45 or absf(ax2) > half * 2.2:
+								okb = false
+						if shared >= 1 and okb:
+							sel[k] = 1
+							for q in 3:
+								vsel[idx[k * 3 + q]] = true
+				for k3 in ntri:
+					var k := k3 * 3
+					var inside: bool = sel[k3] == 1
 					if inside:
 						for q in 3:
 							var vi := idx[k + q]
@@ -225,6 +257,7 @@ func _extract_steer() -> void:
 	wm.mesh = cache["wheel"]
 	sn.add_child(wm)
 	steer_node = sn
+	steer_radius_real = r / float(spec["rad"])
 
 static func steer_axis_of(m: Dictionary) -> Vector3:
 	var a: Array = m.get("steer_axis", [0, 0.34, -0.94])

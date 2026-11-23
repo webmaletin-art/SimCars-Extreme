@@ -411,10 +411,20 @@ func _show_pause_main() -> void:
 	for c in pause_panel.get_children():
 		if c is not ColorRect:
 			c.queue_free()
+	# con desplazamiento (el menú tiene más botones que alto de pantalla): se arrastra con el dedo
+	var sc := ScrollContainer.new()
+	sc.position = Vector2(400, 0)
+	sc.size = Vector2(480, 576)
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.process_mode = Node.PROCESS_MODE_ALWAYS
+	pause_panel.add_child(sc)
 	var box := VBoxContainer.new()
-	box.position = Vector2(420, 70)
+	box.custom_minimum_size = Vector2(460, 0)
 	box.add_theme_constant_override("separation", 12)
-	pause_panel.add_child(box)
+	sc.add_child(box)
+	var top_pad := Control.new()
+	top_pad.custom_minimum_size = Vector2(0, 14)
+	box.add_child(top_pad)
 	box.add_child(UI.label("PAUSA", 44, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
 	var items := [
 		["CONTINUAR", true, _toggle_pause],
@@ -448,6 +458,9 @@ func _show_pause_main() -> void:
 		var b := UI.button(String(it[0]), Vector2(440, 58), 24, bool(it[1]))
 		b.pressed.connect(it[2])
 		box.add_child(b)
+	var bot_pad := Control.new()
+	bot_pad.custom_minimum_size = Vector2(0, 40)
+	box.add_child(bot_pad)
 
 ## Herramienta de marcado: se mueven el asiento, los pedales, el volante y la palanca con deslizadores viendo al piloto en vivo; el piloto «agarra solo» y se ajusta (manos, pies, torso).
 ## COPIAR MARCAS deja el JSON del auto en el portapapeles (para pegárselo al desarrollador y dejarlo fijo en cabin_markers.json).

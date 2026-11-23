@@ -83,6 +83,13 @@ func _init(p_car: Node3D, p_char: String, p_height := 1.76, p_override := {}) ->
 	markers = markers_of(String(meta.get("id", "")), p_override)
 	if not markers.is_empty():
 		apply_markers(markers)
+	# las manos agarran el volante que de verdad se ve y gira: su nodo (el centro de giro) y, si se separó por geometría, su radio real
+	var sn: Node3D = p_car.get("steer_node")
+	if sn != null:
+		S = sn.position
+		var rr: float = float(p_car.get("steer_radius_real"))
+		if rr > 0.05:
+			wheel_r = rr
 	if _fit_all.is_empty():
 		_fit_all = _load_json(FIT_PATH)
 	fit = ((_fit_all.get(String(meta.get("id", "")), {}) as Dictionary).get(char_id, {})) as Dictionary
