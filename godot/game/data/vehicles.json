@@ -270,7 +270,7 @@
   "antiSquat": 0.6,
   "antiDive": 0.4,
   "rollCenter": 0.2,
-  "mu": 1.24,
+  "mu": 1.34,
   "gripFront": 1,
   "gripRear": 1,
   "slipPeakLong": 0.12,
@@ -287,20 +287,24 @@
   },
   "peakTorque": 690,
   "idleRpm": 900,
-  "launchRpm": 3800,
+  "launchRpm": 5200,
   "maxRpm": 8500,
   "torqueCurve": [
    [
     0,
-    0.4
+    0.58
    ],
    [
     1000,
-    0.6
+    0.72
    ],
    [
-    3000,
-    0.86
+    2500,
+    0.88
+   ],
+   [
+    4000,
+    0.96
    ],
    [
     5500,
@@ -331,11 +335,11 @@
    0.81
   ],
   "reverseRatio": 3.2,
-  "finalDrive": 3.15,
+  "finalDrive": 3.75,
   "efficiency": 0.88,
-  "clutchTime": 0.8,
+  "clutchTime": 0.45,
   "shiftUpRpm": 7905,
-  "shiftDownRpm": 3420,
+  "shiftDownRpm": 4680,
   "shiftTime": 0.13,
   "driveType": "AWD",
   "frontDriveRatio": 0.3,
@@ -350,9 +354,9 @@
   "absSlip": 0.14,
   "maxSteer": 0.5,
   "steerResponse": 10,
-  "dragCoef": 0.48,
+  "dragCoef": 0.53,
   "stabilityAssist": 0.3,
-  "powerScale": 1,
+  "powerScale": 1.18,
   "aeroF": 0.18,
   "aeroR": 0.45,
   "vGov": 0

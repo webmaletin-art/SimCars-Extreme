@@ -69,7 +69,7 @@ func set_view_distance(d: float) -> void:
 		if c is WorldEnvironment:
 			we = c
 	if we != null:
-		we.environment.fog_density = clampf(2.6 / d, 0.0022, 0.03)
+		we.environment.fog_density = clampf(1.2 / d, 0.0015, 0.02)
 	set_group_visible("backdrop", d >= 180.0 and bool(opts["backdrop"]))
 
 func set_group_visible(g: String, on: bool) -> void:

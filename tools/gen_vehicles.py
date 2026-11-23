@@ -17,9 +17,9 @@ SPEC = {
         curve=[[0, .40], [1000, .60], [2800, .88], [4200, 1], [7000, 1], [7600, .92], [8100, .55]],
         gears=[2.90, 1.95, 1.56, 1.28, 1.06, 0.89], final=3.55, drive="RWD", cx=0.40, mu=1.45, tire_w=0.34, travel=0.11,
         freq=(2.1, 2.3), brake=7800, aero=(0.70, 1.45), steer=0.48, icon="🏁", tag="Competición GT · V12 · alerón gigante", gov=0),
-    "aventador_s": dict(base="gt", mass=1575, wf=0.43, com=0.47, torque=690, idle=900, maxrpm=8500, launch=3800,
-        curve=[[0, .40], [1000, .60], [3000, .86], [5500, 1], [8000, .98], [8500, .90], [9000, .55]],
-        gears=[3.91, 2.44, 1.81, 1.46, 1.19, 0.97, 0.81], final=3.15, drive="AWD", front=0.30, cx=0.48, mu=1.24, tire_w=0.335, travel=0.12,
+    "aventador_s": dict(base="gt", mass=1575, wf=0.43, com=0.47, torque=690, idle=900, maxrpm=8500, launch=5200, ps=1.18, clutch=0.45,
+        curve=[[0, .58], [1000, .72], [2500, .88], [4000, .96], [5500, 1], [8000, .98], [8500, .90], [9000, .55]],
+        gears=[3.91, 2.44, 1.81, 1.46, 1.19, 0.97, 0.81], final=3.75, drive="AWD", front=0.30, cx=0.53, mu=1.34, tire_w=0.335, travel=0.12,
         freq=(1.8, 2.0), brake=7600, aero=(0.18, 0.45), steer=0.5, icon="🐂", tag="Hiperdeportivo V12 · tracción integral", gov=0),
     "ranger_limited": dict(base="pickup", mass=2300, wf=0.55, com=0.80, torque=600, idle=750, maxrpm=4600, launch=2200,
         curve=[[0, .55], [750, .72], [1750, 1], [2800, 1], [3800, .80], [4400, .60], [4800, .35]],
@@ -84,6 +84,9 @@ def main():
         v["maxSteer"] = S["steer"]
         v["vGov"] = S["gov"]
         v["engineBrake"] = round(S["torque"] * 0.2)
+        v["powerScale"] = S.get("ps", 1)
+        if "clutch" in S:
+            v["clutchTime"] = S["clutch"]
         for k in ("aeroBaseF", "aeroBaseR"):
             v.pop(k, None)
         out[cid] = v

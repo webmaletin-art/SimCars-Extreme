@@ -12,9 +12,9 @@ const CHARS := "res://game/models/characters/"
 
 ## Ajuste fino por auto (todo opcional): dz/dy/dx mueven al piloto (m), eye_dy sube/baja los ojos, hip_dy la cadera, wheel_r radio del aro
 const CABIN := {
-	"mclaren_f1": {"dz": 0.0, "dy": 0.0},
+	"mclaren_f1": {"dy": -0.02, "wheel_r": 0.155},
 	"mclaren_f1_gtr": {},
-	"aventador_s": {"dz": -0.05},
+	"aventador_s": {"dy": -0.06, "dz": -0.05, "wheel_r": 0.165},
 	"ranger_limited": {"dy": -0.04},
 	"rx3_savanna": {},
 	"cls63_amg": {},
