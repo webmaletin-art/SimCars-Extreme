@@ -17,7 +17,8 @@ func _build_scene() -> void:
 	_build_track()
 	_build_barrier()
 	_build_tyres()
-	_build_trees()
+	_build_forest() # (una hilera de árboles bajos + pared de bosque + bandas de pasto: heredado del camino de tierra)
+	_build_details(false)
 	_build_scenery()
 	_build_start()
 	_build_signs_a()
@@ -219,69 +220,6 @@ func _build_tyres() -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.visibility_range_end = 200.0
 	props.add_child(mi)
-
-# ───────────────────────── bosque y pasto ─────────────────────────
-func _build_trees() -> void:
-	var tq: float = opts["trees"]
-	var groups := {}
-	for s in SPECIES:
-		groups[s[0]] = []
-	var n := at.pts.size()
-	var step := maxi(1, int(round(5.0 / maxf(0.3, tq) / 2.0)))
-	for i in range(0, n, step):
-		var nl := Vector2(-at.tans[i].y, at.tans[i].x)
-		for side in [1.0, -1.0]:
-			var off := AsphaltTrack.FH + rng.randf_range(7.0, 11.0)
-			var q: Vector2 = at.pts[i] + nl * float(side) * off
-			var s := _pick_species()
-			groups[s[0]].append(_xf(Vector3(q.x, gy(q.x, q.y) - 0.1, q.y), rng.randf_range(1.1, 1.7)))
-	var sp := 15.0 / maxf(0.4, sqrt(tq))
-	var x := -250.0
-	while x < 600.0:
-		var z := -360.0
-		while z < 130.0:
-			var px := x + rng.randf_range(-4.0, 4.0)
-			var pz := z + rng.randf_range(-4.0, 4.0)
-			var d: float = at.nearest(px, pz)["d"]
-			if d > AsphaltTrack.FH + 16.0 and d < AsphaltTrack.FH + 16.0 + 55.0 and rng.randf() < 0.85:
-				var s2 := _pick_species()
-				groups[s2[0]].append(_xf(Vector3(px, at.terrain_height(px, pz) - 0.1, pz), rng.randf_range(1.0, 1.9)))
-			z += sp
-		x += sp
-	for s in SPECIES:
-		var arr: Array = groups[s[0]]
-		if arr.size() > 0:
-			_multi(s[0], float(s[1]) * float(s[2]), float(s[1]), arr, 0.06, Color(0.97, 0.98, 0.97), 240.0, true)
-	# pasto corto en la zona de escape y mata alta / arbustos / flores detrás de la barrera
-	var g := float(opts["grass"])
-	var tuft := {"pasto_mata": [], "pasto_alto": [], "pasto_seco": []}
-	var bush := {"arbusto_verde": [], "arbusto_flores_rosa": [], "arbusto_flores_amarillo": []}
-	var flo := {"flor_blanca": [], "flor_amarilla": [], "flor_roja": [], "flor_violeta": []}
-	var bt := ["arbusto_verde", "arbusto_flores_rosa", "arbusto_flores_amarillo"]
-	var ft := ["flor_blanca", "flor_amarilla", "flor_roja", "flor_violeta"]
-	for i in range(0, n, 2):
-		var nl2 := Vector2(-at.tans[i].y, at.tans[i].x)
-		for side in [1.0, -1.0]:
-			for k in int(round(2.0 * g)):
-				var off2 := rng.randf_range(AsphaltTrack.RH + AsphaltTrack.KERB + AsphaltTrack.GRAVEL + 0.4, AsphaltTrack.FH - 0.6) if rng.randf() < 0.5 else rng.randf_range(AsphaltTrack.FH + 0.6, AsphaltTrack.FH + 6.0)
-				var q2: Vector2 = at.pts[i] + nl2 * float(side) * off2 + at.tans[i] * rng.randf_range(-1.0, 1.0)
-				var tt: String = ["pasto_mata", "pasto_mata", "pasto_alto", "pasto_seco"][rng.randi() % 4]
-				tuft[tt].append(_xf(Vector3(q2.x, gy(q2.x, q2.y) - 0.02, q2.y), rng.randf_range(0.7, 1.4)))
-			if rng.randf() < 0.18 * g:
-				var q3: Vector2 = at.pts[i] + nl2 * float(side) * (AsphaltTrack.FH + rng.randf_range(1.5, 5.0))
-				bush[bt[rng.randi() % 3]].append(_xf(Vector3(q3.x, gy(q3.x, q3.y) - 0.02, q3.y), rng.randf_range(0.8, 1.5)))
-			if rng.randf() < 0.3 * g:
-				var q4: Vector2 = at.pts[i] + nl2 * float(side) * (AsphaltTrack.FH + rng.randf_range(0.8, 3.0))
-				flo[ft[rng.randi() % 4]].append(_xf(Vector3(q4.x, gy(q4.x, q4.y) - 0.02, q4.y), rng.randf_range(1.0, 1.7)))
-	for t in tuft:
-		if tuft[t].size() > 0:
-			_multi(t, 0.66 if t == "pasto_mata" else 0.7, 0.5 if t == "pasto_mata" else 0.8, tuft[t], 0.07, Color.WHITE, 75.0)
-	for b in bush:
-		if bush[b].size() > 0:
-			_multi(b, 2.0, 1.5, bush[b], 0.03, Color.WHITE, 150.0)
-	for f in flo:
-		if flo[f].size() > 0:
-			_multi(f, 0.23, 0.35, flo[f], 0.08, Color.WHITE, 50.0)
 
 # ───────────────────────── tribunas y boxes ─────────────────────────
 func _box(pos: Vector3, size: Vector3, mat: Material, yaw := 0.0) -> MeshInstance3D:

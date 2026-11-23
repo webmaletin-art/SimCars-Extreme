@@ -28,6 +28,9 @@ func road_half() -> float:
 func fence_half() -> float:
 	return FH
 
+func tuft_lo() -> float:
+	return FH + 0.3 # (en la zona de escape de grava no crece pasto)
+
 ## Perfil transversal: leve bombeo, curb apenas más alto y zona de escape que baja suave
 func profile(lat: float) -> float:
 	var a := absf(lat)

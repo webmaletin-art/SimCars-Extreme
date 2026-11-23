@@ -69,6 +69,7 @@ var dbg_cam := []
 var crash := false
 var hidecar := false
 var opt_script := ""
+var dbg_arc := -1.0 # (depuración) largar a esta distancia (m) sobre el eje del circuito
 var _vp_base: Viewport
 
 func _ready() -> void:
@@ -89,6 +90,8 @@ func _ready() -> void:
 			call_deferred("_auto_perf")
 		elif a == "--hidecar": # (depuración) oculta el auto y marca la cadera / el asiento (verde) y el pedal (rojo)
 			hidecar = true
+		elif a.begins_with("--arc="):
+			dbg_arc = float(a.substr(6))
 		elif a == "--crash":
 			crash = true
 		elif a == "--still":
@@ -214,6 +217,11 @@ func _apply_pilot_adj() -> void:
 ## (x, z, yaw) de la largada
 func _start_pose() -> Vector3:
 	if is_dirt:
+		if dbg_arc >= 0.0:
+			var k: int = int(dbg_arc / 2.0) % world.dt.pts.size()
+			var q: Vector2 = world.dt.pts[k]
+			var tg: Vector2 = world.dt.tans[k]
+			return Vector3(q.x, q.y, atan2(tg.x, tg.y))
 		return world.dt.start_pose()
 	return Vector3(START.x, START.z, 0.0)
 

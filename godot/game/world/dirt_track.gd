@@ -45,6 +45,10 @@ func road_half() -> float:
 func fence_half() -> float:
 	return FENCE_HALF
 
+## desde qué distancia del eje crece el pasto suelto (la banquina)
+func tuft_lo() -> float:
+	return 4.6
+
 func profile(lat: float) -> float:
 	return cross_profile(lat)
 

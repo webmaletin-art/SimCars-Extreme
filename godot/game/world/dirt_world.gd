@@ -6,11 +6,11 @@ extends "res://game/world/lot_world.gd"
 const DirtTrack := preload("res://game/world/dirt_track.gd")
 const ROAD := preload("res://game/world/road.gdshader")
 
-## [textura, alto (m), proporción ancho/alto, peso]
+## Bosque nativo (todo verde): árboles de copa baja [textura, alto (m), proporción ancho/alto, peso]
 const SPECIES := [
-	["arbol_redondo", 8.0, 0.667, 26], ["arbol_cipres", 8.0, 0.5, 13], ["arbol_alamo", 8.0, 0.417, 9], ["arbol_otono", 7.0, 0.8, 8],
-	["arbol_amarillo", 8.0, 0.667, 8], ["arbol_rojo", 8.0, 0.667, 8], ["arbol_rosa", 8.0, 0.667, 7], ["arbol_violeta", 7.0, 0.8, 7],
-	["arbol_cipres_azul", 8.0, 0.5, 6], ["arbol_alamo_amarillo", 8.0, 0.417, 6]]
+	["arbol_bajo_a", 5.0, 1.0, 24], ["arbol_bajo_b", 5.0, 1.0, 18], ["arbol_bajo_c", 5.0, 0.75, 14], ["arbol_bajo_d", 5.0, 1.0, 16], ["arbol_bajo_e", 5.0, 1.0, 16],
+	["arbol_cipres", 8.0, 0.5, 5], ["arbol_alamo", 8.0, 0.417, 4]]
+const WALL_OFF := 34.0 # hasta dónde se aleja la pared de bosque del eje (m)
 
 var dt: DirtTrack
 var arc_nodes: Array = [] # {n, a0, a1}: pedazos de cerco/barrera que sólo se dibujan cuando su tramo del circuito está cerca del auto
@@ -55,7 +55,8 @@ func set_car_pos(p: Vector3) -> void:
 			var mid: float = (float(e["a0"]) + float(e["a1"])) * 0.5
 			var half: float = absf(float(e["a1"]) - float(e["a0"])) * 0.5
 			var d := fposmod(mid - arc + dt.length * 0.5, dt.length) - dt.length * 0.5
-			(e["n"] as Node3D).visible = d - half < ahead and d + half > -90.0
+			var ext: float = float(e.get("ext", 0.0)) # (la pared de bosque se ve un poco más lejos: es barata y así no se nota el corte)
+			(e["n"] as Node3D).visible = d - half < ahead + ext and d + half > -90.0 - ext
 
 ## Pared continua a lo largo del eje, partida en pedazos de ~100 m (cada uno se oculta solo cuando su tramo queda lejos del auto)
 func _wall_chunks(side: float, lat: float, y_off: float, h: float, u_per_m: float, v_top: float, v_bot: float, mat: Material, one_sided: bool) -> void:
@@ -329,47 +330,166 @@ func _pick_species() -> Array:
 			return s
 	return SPECIES[0]
 
-## Bosque: dos hileras altas y apretadas pegadas al cerco (tapan la vista) y relleno hasta 160 m del camino, todo de árboles en cruz posados sobre el terreno
+## Bosque: UNA hilera de árboles bajos pegada al cerco (de verdad, en cruz) + la pared de bosque opaca detrás (png sin vértices de hojas) que cierra el paisaje
 func _build_forest() -> void:
 	var tq: float = opts["trees"]
 	var groups_x := {}
 	for s in SPECIES:
 		groups_x[s[0]] = []
 	var n := dt.pts.size()
-	var step := maxi(1, int(round(3.4 / maxf(0.3, tq) / 2.0)))
+	var fh := dt.fence_half()
+	var step := maxi(1, int(round(5.2 / maxf(0.3, tq) / 2.0)))
 	for i in range(0, n, step):
 		var p := dt.pts[i]
 		var tg := dt.tans[i]
 		var nl := Vector2(-tg.y, tg.x)
 		for side in [1.0, -1.0]:
-			for row in [3.0, 7.5]:
-				var off := DirtTrack.FENCE_HALF + float(row) + rng.randf_range(-0.8, 1.2)
-				var q: Vector2 = p + nl * float(side) * off + tg * rng.randf_range(-1.2, 1.2)
-				var s := _pick_species()
-				groups_x[s[0]].append(_xf(Vector3(q.x, gy(q.x, q.y) - 0.1, q.y), rng.randf_range(1.15, 1.75)))
-	var sp := 10.5 / maxf(0.4, sqrt(tq))
-	var x := -230.0
-	while x < 280.0:
-		var z := -90.0
-		while z < 230.0:
-			var px := x + rng.randf_range(-3.2, 3.2)
-			var pz := z + rng.randf_range(-3.2, 3.2)
-			var nr := dt.nearest(px, pz)
-			var d: float = nr["d"]
-			if d > DirtTrack.FENCE_HALF + 11.0 and d < DirtTrack.FENCE_HALF + 11.0 + 42.0 and rng.randf() < 0.85: # (más lejos no se ve: las hileras de adelante lo tapan)
-				var s2 := _pick_species()
-				groups_x[s2[0]].append(_xf(Vector3(px, dt.terrain_height(px, pz) - 0.1, pz), rng.randf_range(1.0, 1.9)))
-			z += sp
-		x += sp
+			var off := fh + 2.6 + rng.randf_range(-0.5, 1.1)
+			var q: Vector2 = p + nl * float(side) * off + tg * rng.randf_range(-1.4, 1.4)
+			var s := _pick_species()
+			groups_x[s[0]].append(_xf(Vector3(q.x, gy(q.x, q.y) - 0.1, q.y), rng.randf_range(0.85, 1.3)))
 	for s in SPECIES:
 		var arr: Array = groups_x[s[0]]
 		if arr.size() > 0:
 			_multi(s[0], float(s[1]) * float(s[2]), float(s[1]), arr, 0.06, Color(0.97, 0.98, 0.97), 230.0, true)
+	_build_forest_wall()
+	_build_grass_bands()
+
+## Distancia de la pared al eje en cada muestra (cada 3 puntos = 6 m): hasta WALL_OFF, pero sin pasar sobre otros tramos del circuito
+## ni plegarse del lado de adentro de las curvas cerradas (ahí la pared se acerca y cierra la curva).
+func _wall_offsets(side: float) -> PackedFloat32Array:
+	var n := dt.pts.size()
+	var m := int(ceil(float(n) / 3.0))
+	var fh := dt.fence_half()
+	var off := PackedFloat32Array()
+	off.resize(m)
+	for j in m:
+		var i := (j * 3) % n
+		var nl := Vector2(-dt.tans[i].y, dt.tans[i].x)
+		var chosen := fh + 3.5
+		for cand in [WALL_OFF, 28.0, 22.0, 17.0]:
+			var q: Vector2 = dt.pts[i] + nl * side * float(cand)
+			if _clear_of_other_legs(q, i, fh + 4.5):
+				chosen = float(cand)
+				break
+		var cv: float = dt.curv[i]
+		if side * cv > 0.0004: # la curva gira hacia este lado: la pared no puede pasar del radio
+			chosen = minf(chosen, maxf(fh + 3.5, 0.8 / absf(cv)))
+		off[j] = chosen
+	for _k in 2: # suaviza (la pared no puede saltar más de 3 m cada 6 m)
+		for j in range(1, m):
+			off[j] = minf(off[j], off[j - 1] + 3.0)
+		for j in range(m - 2, -1, -1):
+			off[j] = minf(off[j], off[j + 1] + 3.0)
+		off[0] = minf(off[0], off[m - 1] + 3.0)
+	return off
+
+## ¿el punto q queda a más de `margin` de todos los tramos del circuito que están a más de 70 m de recorrido de la muestra i?
+func _clear_of_other_legs(q: Vector2, i: int, margin: float) -> bool:
+	var cx := int(floor(q.x / 24.0))
+	var cz := int(floor(q.y / 24.0))
+	var n := dt.pts.size()
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			var lst: Array = dt._grid.get(Vector2i(cx + dx, cz + dz), [])
+			for k in lst:
+				var da := absf(float(dt.cum[k]) - float(dt.cum[i]))
+				da = minf(da, dt.length - da)
+				if da > 70.0 and q.distance_to(dt.pts[k]) < margin:
+					return false
+	return true
+
+## Pared de bosque en dos capas (la de atrás más alta y oscura): cinta opaca (sólo se recorta la silueta de arriba) que sigue el circuito
+func _build_forest_wall() -> void:
+	for layer in 2:
+		var far := layer == 0
+		var tex := _tex("bosque_lejos" if far else "bosque_cerca")
+		if tex == null:
+			continue
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = tex
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		m.alpha_scissor_threshold = 0.5
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		m.albedo_color = Color(0.86, 0.9, 0.86) if far else Color(1, 1, 1)
+		var hgt := 11.0 if far else 8.0
+		for side in [1.0, -1.0]:
+			var offs := _wall_offsets(float(side))
+			var back := 0.0 if far else -(6.0 + 2.0 * float(layer))
+			_wall_ribbon(float(side), offs, 0.0 if far else -7.0, hgt, 40.0, m)
+
+## Cinta vertical por las muestras de offs (cada una = 3 puntos del eje), partida en pedazos de ~100 m que se ocultan solos con la ventana del circuito.
+func _wall_ribbon(side: float, offs: PackedFloat32Array, pull: float, h: float, tile: float, mat: Material) -> void:
+	var n := dt.pts.size()
+	var m := offs.size()
+	var fh := dt.fence_half()
+	var CH := 17
+	var run := 0.0
+	var acc := PackedFloat32Array() # largo recorrido por la pared hasta cada muestra (para que la textura no se estire)
+	var prev := Vector2.ZERO
+	var qs := PackedVector2Array()
+	for j in m + 1:
+		var i := (j * 3) % n
+		var nl := Vector2(-dt.tans[i].y, dt.tans[i].x)
+		var o := maxf(fh + 3.0, float(offs[j % m]) + pull)
+		var q: Vector2 = dt.pts[i] + nl * side * o
+		if j > 0:
+			run += q.distance_to(prev)
+		acc.append(run)
+		qs.append(q)
+		prev = q
+	for c0 in range(0, m, CH):
+		var c1 := mini(c0 + CH, m)
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for j in range(c0, c1 + 1):
+			var q: Vector2 = qs[j]
+			var yb := gy(q.x, q.y) - 0.7
+			st.set_uv(Vector2(float(acc[j]) / tile, 1.0))
+			st.add_vertex(Vector3(q.x, yb, q.y))
+			st.set_uv(Vector2(float(acc[j]) / tile, 0.0))
+			st.add_vertex(Vector3(q.x, yb + h + 0.7, q.y))
+		for k in c1 - c0:
+			var v0 := k * 2
+			st.add_index(v0)
+			st.add_index(v0 + 1)
+			st.add_index(v0 + 2)
+			st.add_index(v0 + 1)
+			st.add_index(v0 + 3)
+			st.add_index(v0 + 2)
+		st.generate_normals()
+		var mi := MeshInstance3D.new()
+		mi.mesh = st.commit()
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		props.add_child(mi)
+		_tag(mi, "misc", 320.0)
+		arc_nodes.append({"n": mi, "ext": 70.0, "a0": float(dt.cum[(c0 * 3) % n]), "a1": float(dt.cum[(c1 * 3) % n]) if c1 * 3 < n else dt.length})
+
+## Bandas de pasto y de matorral (png repetible) pegadas al cerco: la hilera real de matas va adelante y esto rellena el resto sin un solo pasto suelto
+func _build_grass_bands() -> void:
+	var fh := dt.fence_half()
+	for spec in [["pasto_banda", 1.3, 1.2, 6.0, 1.2], ["matorral_banda", 5.0, 2.2, 6.0, 2.2]]:
+		var tex := _tex(String(spec[0]))
+		if tex == null:
+			continue
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = tex
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		m.alpha_scissor_threshold = 0.5
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		for side in [1.0, -1.0]:
+			_wall_chunks(float(side), fh + float(spec[1]), -0.25, float(spec[2]) + 0.25, 1.0 / float(spec[3]), 0.0, 1.0, m, false)
 
 ## Sotobosque y detalles: pasto verde, alto y seco, juncos en los charcos, matas, flores de campo, arbustos, rocas en la zanja, troncos caídos, tocones y fardos de heno
-func _build_details() -> void:
+func _build_details(dirt_props := true) -> void:
 	var g := float(opts["grass"])
 	var n := dt.pts.size()
+	var fh := dt.fence_half()
 	var tuft := {"pasto_mata": [], "pasto_alto": [], "pasto_seco": []}
 	var tuft_t := ["pasto_mata", "pasto_mata", "pasto_alto", "pasto_seco"]
 	var bush_x := {"arbusto_verde": [], "arbusto_flores_rosa": [], "arbusto_flores_amarillo": []}
@@ -377,28 +497,27 @@ func _build_details() -> void:
 	var bt := ["arbusto_verde", "arbusto_flores_rosa", "arbusto_flores_amarillo"]
 	var ft := ["flor_blanca", "flor_amarilla", "flor_roja", "flor_violeta"]
 	var rock_xf := []
-	for i in range(0, n, 1):
+	var lo := dt.tuft_lo()
+	# Una hilera real de matas, arbustos y flores pegada al camino y al cerco; el resto del pasto es la banda png (_build_grass_bands)
+	for i in range(0, n, 2):
 		var p2 := dt.pts[i]
 		var tg2 := dt.tans[i]
 		var nl2 := Vector2(-tg2.y, tg2.x)
 		for side in [1.0, -1.0]:
-			# pasto en la banquina, la zanja y detrás del cerco
-			for k in int(round(3.2 * g)):
-				var off2: float = [rng.randf_range(4.6, 6.3), rng.randf_range(6.5, 9.0)][rng.randi() % 2]
+			for k in int(round(1.6 * g)):
+				var off2: float = rng.randf_range(lo, fh + 1.0)
 				var q2: Vector2 = p2 + nl2 * float(side) * off2 + tg2 * rng.randf_range(-1.0, 1.0)
 				tuft[tuft_t[rng.randi() % 4]].append(_xf(Vector3(q2.x, gy(q2.x, q2.y) - 0.02, q2.y), rng.randf_range(0.7, 1.5)))
-			# matas altas al borde mismo del camino (poco)
-			if rng.randf() < 0.35 * g:
+			if dirt_props and rng.randf() < 0.35 * g: # matas altas al borde mismo del camino
 				var q5: Vector2 = p2 + nl2 * float(side) * rng.randf_range(4.3, 4.9)
 				tuft["pasto_seco"].append(_xf(Vector3(q5.x, gy(q5.x, q5.y) - 0.02, q5.y), rng.randf_range(0.5, 0.9)))
-			if rng.randf() < 0.2 * g:
-				var q3: Vector2 = p2 + nl2 * float(side) * (DirtTrack.FENCE_HALF + rng.randf_range(1.2, 4.0))
+			if rng.randf() < 0.1 * g:
+				var q3: Vector2 = p2 + nl2 * float(side) * (fh + rng.randf_range(1.2, 4.0))
 				bush_x[bt[rng.randi() % 3]].append(_xf(Vector3(q3.x, gy(q3.x, q3.y) - 0.02, q3.y), rng.randf_range(0.8, 1.5)))
-			if rng.randf() < 0.32 * g:
-				var q4: Vector2 = p2 + nl2 * float(side) * (DirtTrack.FENCE_HALF + rng.randf_range(0.2, 2.2))
+			if rng.randf() < 0.14 * g:
+				var q4: Vector2 = p2 + nl2 * float(side) * (fh + rng.randf_range(0.2, 2.2))
 				flower_x[ft[rng.randi() % 4]].append(_xf(Vector3(q4.x, gy(q4.x, q4.y) - 0.02, q4.y), rng.randf_range(1.0, 1.7)))
-			# piedras de la zanja y del borde
-			if rng.randf() < 0.45:
+			if dirt_props and rng.randf() < 0.9: # piedras de la zanja y del borde
 				var q6: Vector2 = p2 + nl2 * float(side) * rng.randf_range(4.2, 6.2)
 				var sc := rng.randf_range(0.06, 0.30)
 				var b := Basis(Vector3.UP, rng.randf() * TAU) * Basis.from_scale(Vector3(sc * rng.randf_range(1.0, 1.6), sc * rng.randf_range(0.5, 0.9), sc * rng.randf_range(1.0, 1.4)))
@@ -414,6 +533,8 @@ func _build_details() -> void:
 	for f in flower_x:
 		if flower_x[f].size() > 0:
 			_multi(f, 0.23, 0.35, flower_x[f], 0.08, Color.WHITE, 50.0)
+	if not dirt_props:
+		return
 	# juncos alrededor de los baches con agua y de los charcos
 	var reeds := []
 	for h in dt.holes:
@@ -442,7 +563,7 @@ func _build_details() -> void:
 	# troncos caídos, tocones y fardos de heno fuera del cerco
 	var bark := _mat_tex("hormigon", Vector3(1, 1, 1), 0.95, Color(0.42, 0.28, 0.17))
 	var hay := _flat(Color(0.82, 0.68, 0.3), 0.95)
-	for k in int(26.0 * g) + 4:
+	for k in int(10.0 * g) + 3:
 		var i3 := rng.randi() % n
 		var p3 := dt.pts[i3]
 		var tg3 := dt.tans[i3]

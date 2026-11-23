@@ -855,6 +855,156 @@ def tex_cielo(path, res=(1024, 512)):
 
 TASKS = {}
 
+# ───────────────────────── bosque nativo (todo en verdes): pared de fondo, árboles bajos y bandas de pasto ─────────────────────────
+GREENS = {
+    "oscuro": [(0.04, 0.17, 0.07), (0.07, 0.24, 0.10), (0.10, 0.30, 0.13)],
+    "medio": [(0.10, 0.28, 0.06), (0.16, 0.38, 0.08), (0.13, 0.32, 0.07)],
+    "claro": [(0.22, 0.42, 0.08), (0.28, 0.50, 0.10), (0.18, 0.38, 0.07)],
+    "azulado": [(0.06, 0.24, 0.16), (0.09, 0.31, 0.20), (0.12, 0.36, 0.22)],
+    "oliva": [(0.20, 0.30, 0.07), (0.26, 0.37, 0.09), (0.16, 0.26, 0.06)],
+}
+
+def _tint(cols, k):
+    return [(c[0] * k, c[1] * k, c[2] * k) for c in cols]
+
+def _add_tree(rnd, builder, cols, x, z0, sc, bm_all_objs, mat_t, mat_l):
+    """un árbol (tronco + hojas) a escala sc en (x, 0, z0): devuelve los objetos creados"""
+    bm = bmesh.new()
+    c, blobs, trunk = builder(rnd, bm)
+    me = bpy.data.meshes.new("t")
+    bm.to_mesh(me)
+    bm.free()
+    for f in me.polygons:
+        f.use_smooth = True
+    to = bpy.data.objects.new("t", me)
+    bpy.context.collection.objects.link(to)
+    to.data.materials.append(mat_t)
+    lm = leaf_mesh(rnd, blobs["blobs"], blobs["n"], blobs["size"], cols, blobs.get("flat", 0.0))
+    lo = bpy.data.objects.new("l", lm)
+    bpy.context.collection.objects.link(lo)
+    lo.data.materials.append(mat_l)
+    out = []
+    for o in (to, lo):
+        o.location = (x, rnd.uniform(-1.0, 1.0), z0)
+        o.scale = (sc, sc, sc)
+        out.append(o)
+    return out
+
+def render_forest_band(path, seed, W=40.0, H=10.0, n_trees=34, sc_range=(0.85, 1.3), shade=1.0, res_x=2048, ground_dark=True):
+    """banda de bosque REPETIBLE a lo ancho (los árboles que cruzan el borde se duplican del otro lado): fondo de sotobosque oscuro y copas de varios verdes.
+    El borde de arriba es la silueta contra el cielo (alfa); abajo todo opaco."""
+    rnd = random.Random(seed)
+    res = (res_x, int(res_x * H / W))
+    sc = reset(res, transparent=True, samples=40)
+    sky_world(0.8)
+    sun((0.9, 0.3, 0.8), 2.4)
+    mat_t = bark_material()
+    mat_l = foliage_material()
+    def conifer_short(rnd, bm):  # (sin el palo del tronco asomando por arriba de la copa)
+        tube(bm, (0, 0, 0), (0, 0, 5.4), 0.22, 0.08, 8)
+        blobs = [((0, 0, 1.2 + i * 0.68), max(0.25, 1.65 * (1 - i / 9.4))) for i in range(9)]
+        return [(0.04, 0.17, 0.07)], {"blobs": blobs, "n": 150, "size": 0.2, "flat": 0.6}, None
+    builders = [build_round, build_round, conifer_short, build_poplar]
+    greens = list(GREENS.keys())
+    # sotobosque: bolas grandes y oscuras a lo largo de toda la banda (tapan troncos y huecos)
+    xs = [i * 1.7 for i in range(int(W / 1.7) + 4)]
+    for x in xs:
+        for dx in (0.0, -W, W):
+            for zr, rr in (((0.9, 2.2), (1.8, 2.6)), ((3.0, 4.6), (1.8, 2.5))):
+                blobs = [((x + dx, rnd.uniform(-0.5, 0.5), rnd.uniform(*zr)), rnd.uniform(*rr))]
+                lm = leaf_mesh(rnd, blobs, 420, 0.27, _tint(GREENS["oscuro"], shade * rnd.uniform(0.85, 1.05)), 0.1)
+                lo = bpy.data.objects.new("u", lm)
+                bpy.context.collection.objects.link(lo)
+                lo.data.materials.append(mat_l)
+    for i in range(n_trees):
+        x = (i + rnd.uniform(-0.3, 0.3)) * W / n_trees
+        k = rnd.uniform(*sc_range)
+        b = rnd.choice(builders)
+        gname = rnd.choice(greens)
+        cols = _tint(GREENS[gname], shade * rnd.uniform(0.85, 1.15))
+        for dx in (0.0, -W, W):
+            if -6.0 < x + dx < W + 6.0:
+                _add_tree(rnd, b, cols, x + dx, 0.0, k, None, mat_t, mat_l)
+    camera_ortho((W / 2, -40, H / 2), (math.pi / 2, 0, 0), W)
+    sc.render.resolution_x, sc.render.resolution_y = res
+    render(path)
+
+def build_low_round(cols):
+    def b(rnd, bm):
+        tube(bm, (0, 0, 0), (0.03, 0, 1.4), 0.24, 0.14, 8)
+        tube(bm, (0.03, 0, 1.2), (-0.9, 0.1, 2.2), 0.1, 0.05, 6)
+        tube(bm, (0.03, 0, 1.3), (0.9, -0.1, 2.4), 0.1, 0.05, 6)
+        blobs = [((0, 0, 2.5), 1.45), ((-1.1, 0.2, 2.1), 1.1), ((1.15, -0.1, 2.2), 1.15), ((0.1, 0.1, 3.4), 1.05), ((-0.5, -0.3, 3.0), 1.0), ((0.7, 0.2, 3.1), 0.95)]
+        return cols, {"blobs": blobs, "n": 480, "size": 0.25}, None
+    return b
+
+def build_low_conifer(cols):
+    def b(rnd, bm):
+        tube(bm, (0, 0, 0), (0, 0, 4.2), 0.18, 0.04, 8)
+        blobs = []
+        for i in range(7):
+            z = 0.9 + i * 0.5
+            r = max(0.22, 1.35 * (1 - i / 7.4))
+            blobs.append(((0, 0, z), r))
+        return cols, {"blobs": blobs, "n": 150, "size": 0.19, "flat": 0.6}, None
+    return b
+
+def render_grass_band(path, seed, W=6.0, H=1.2, tall=1.0, cols=((0.16, 0.4, 0.08), (0.22, 0.46, 0.1)), n=260, res_x=1536, dry_frac=0.15, leafy=False):
+    """banda de pasto / matorral REPETIBLE: opaca abajo, recortada arriba"""
+    rnd = random.Random(seed)
+    res = (res_x, int(res_x * H / W))
+    sc = reset(res, transparent=True, samples=36)
+    sky_world(0.8)
+    sun((0.9, 0.3, 0.8), 2.5)
+    if leafy:
+        mat_l = foliage_material()
+        for i in range(int(W / 0.9) + 2):
+            for dx in (0.0, -W, W):
+                x = i * 0.9 + dx
+                if -1.5 < x < W + 1.5:
+                    blobs = [((x, rnd.uniform(-0.3, 0.3), rnd.uniform(0.35, 0.8)), rnd.uniform(0.5, 0.85))]
+                    cc = [tuple(c * rnd.uniform(0.85, 1.2) for c in rnd.choice(cols))]
+                    lm = leaf_mesh(rnd, blobs, 160, 0.14, cc, 0.2)
+                    lo = bpy.data.objects.new("m", lm)
+                    bpy.context.collection.objects.link(lo)
+                    lo.data.materials.append(mat_l)
+    else:
+        bm = bmesh.new()
+        layer = bm.loops.layers.color.new("col")
+        for _ in range(n):
+            x0 = rnd.uniform(0, W)
+            hgt = tall * rnd.uniform(0.35, 1.0)
+            lean = rnd.uniform(-0.2, 0.2)
+            dry = rnd.random() < dry_frac
+            base = rnd.choice(cols)
+            for dx in (0.0, -W, W):
+                x = x0 + dx
+                if not (-0.5 < x < W + 0.5):
+                    continue
+                y = rnd.uniform(-0.3, 0.3) if dx == 0.0 else 0.0
+                w = 0.03
+                vs = []
+                for k in range(5):
+                    t = k / 4
+                    px = x + lean * t * t * hgt
+                    ww = w * (1 - t * 0.92)
+                    vs.append((bm.verts.new(Vector((px - ww, y, hgt * t))), bm.verts.new(Vector((px + ww, y, hgt * t)))))
+                for k in range(4):
+                    f = bm.faces.new([vs[k][0], vs[k][1], vs[k + 1][1], vs[k + 1][0]])
+                    for l in f.loops:
+                        kk = 0.55 + 0.75 * (k + 1) / 4
+                        c = (0.5 * kk, 0.42 * kk, 0.15 * kk) if dry else (base[0] * kk, base[1] * kk, base[2] * kk)
+                        l[layer] = (*c, 1)
+        me = bpy.data.meshes.new("g")
+        bm.to_mesh(me)
+        bm.free()
+        o = bpy.data.objects.new("g", me)
+        bpy.context.collection.objects.link(o)
+        o.data.materials.append(foliage_material())
+    camera_ortho((W / 2, -20, H / 2), (math.pi / 2, 0, 0), W)
+    sc.render.resolution_x, sc.render.resolution_y = res
+    render(path)
+
 def main():
     global OUT
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
@@ -893,6 +1043,11 @@ def main():
         "pasto_sprite": lambda: [render_grass(P("pasto_mata.png"), 1), render_grass(P("pasto_alto.png"), 2, (256, 384), 0.9, (0.22, 0.46, 0.1)), render_grass(P("pasto_seco.png"), 3, (256, 256), 0.6, dry=True)],
         "flores": lambda: [render_flower(P("flor_blanca.png"), 1, (0.97, 0.97, 0.95)), render_flower(P("flor_amarilla.png"), 2, (0.98, 0.8, 0.1), (0.5, 0.3, 0.05)),
                            render_flower(P("flor_roja.png"), 3, (0.85, 0.1, 0.1), (0.1, 0.05, 0.02), petals=6), render_flower(P("flor_violeta.png"), 4, (0.55, 0.3, 0.85), (0.95, 0.85, 0.2), petals=7)],
+        "bosque": lambda: [render_forest_band(P("bosque_lejos.png"), 21, 40.0, 11.0, 30, (0.95, 1.35), 0.7, 2048), render_forest_band(P("bosque_cerca.png"), 22, 40.0, 8.0, 34, (0.7, 1.0), 1.0, 2048)],
+        "arboles_verdes": lambda: [render_tree(P("arbol_bajo_a.png"), build_low_round(GREENS["medio"]), (512, 512), 5.0, 31), render_tree(P("arbol_bajo_b.png"), build_low_round(GREENS["claro"]), (512, 512), 5.0, 32),
+                                   render_tree(P("arbol_bajo_c.png"), build_low_conifer(GREENS["oscuro"]), (384, 512), 5.0, 33), render_tree(P("arbol_bajo_d.png"), build_low_round(GREENS["azulado"]), (512, 512), 5.0, 34),
+                                   render_tree(P("arbol_bajo_e.png"), build_low_round(GREENS["oliva"]), (512, 512), 5.0, 35)],
+        "pasto_banda": lambda: [render_grass_band(P("pasto_banda.png"), 41, 6.0, 1.2, 1.0), render_grass_band(P("matorral_banda.png"), 42, 6.0, 2.2, 1.0, (GREENS["medio"][0], GREENS["claro"][0], GREENS["oliva"][0]), 0, 1536, 0.0, True)],
         "cielo": lambda: tex_cielo(P("cielo.png")),
     }
     for n in (names or list(jobs)):
