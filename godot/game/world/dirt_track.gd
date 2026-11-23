@@ -5,7 +5,9 @@ extends "res://game/world/lot_track.gd"
 ## Superficies: tierra (1) en el camino, banquina (2) entre el camino y el cerco, barro (5) en los charcos.
 
 const ROAD_HALF := 4.4 # semiancho del camino (m)
-const FENCE_HALF := 6.4 # distancia del eje al cerco (m)
+const FENCE_HALF := 8.8 # distancia del eje al cerco (m): está ARRIBA del talud, a 1,2 m del borde de la meseta
+const BANK_FROM := 4.2 # donde empieza a subir el talud (m desde el eje)
+const BANK_LEN := 3.4 # largo en planta del talud (m)
 const CELL := 24.0
 
 ## puntos de control del eje (x, z) en metros; la curva pasa por todos y se cierra
@@ -20,6 +22,7 @@ var _grid := {}
 var mud: Array = [] # {x, z, r}
 var curv: PackedFloat32Array = PackedFloat32Array() # curvatura firmada por punto (1/m)
 var hprof: PackedFloat32Array = PackedFloat32Array() # altura del eje por punto (lomas suaves: pendiente máxima ~7 %)
+var bank: PackedFloat32Array = PackedFloat32Array() # altura del talud sobre el camino por punto: el camino va hundido entre dos taludes de tierra (0,3 a 1,45 m)
 var holes: Array = [] # {x, z, r, depth, water}
 var coarse: PackedVector3Array = PackedVector3Array() # (x, z, altura) cada ~10 m: para el terreno lejano
 const CROWN := 0.045 # el camino es más alto en el medio (desagote)
@@ -51,6 +54,14 @@ func tuft_lo() -> float:
 
 func profile(lat: float) -> float:
 	return cross_profile(lat)
+
+## Perfil transversal del punto i (camino hundido con taludes)
+func profile_at(i: int, lat: float) -> float:
+	return bank_profile(lat, float(bank[i]))
+
+## altura del talud (m) según el avance u (0..1): varía a lo largo del camino, a veces casi a nivel y a veces bien hundido
+func _bank(u: float) -> float:
+	return clampf(0.85 + 0.5 * sin(TAU * 3.0 * u + 0.7) + 0.22 * sin(TAU * 7.0 * u + 2.1), 0.3, 1.45)
 
 func _setup() -> void:
 	# lomos y ondas sobre el camino (cada rasgo se alinea con el eje: yaw = ángulo de la tangente)
@@ -138,6 +149,9 @@ func _sample() -> void:
 	for i in m:
 		var u := float(cum[i]) / length
 		hprof.append(_elev(u))
+	bank = PackedFloat32Array()
+	for i in m:
+		bank.append(_bank(float(cum[i]) / length))
 	coarse = PackedVector3Array()
 	for i in range(0, m, 5):
 		coarse.append(Vector3(pts[i].x, pts[i].y, hprof[i]))
@@ -185,7 +199,19 @@ func axis_height(nr: Dictionary, x: float, z: float) -> float:
 		return lerpf(hprof[i], hprof[(i + 1) % m], minf(tproj, 1.0))
 	return lerpf(hprof[i], hprof[(i - 1 + m) % m], minf(-tproj, 1.0))
 
-## Perfil transversal (relativo al eje): corona del camino, huellas de las ruedas (dos surcos y un lomo en el medio) y zanja en la banquina
+## Perfil de camino rural hundido: corona leve, dos huellas de rueda y un lomo en el medio, y a los costados talud de tierra (rampa suave) que sube hasta la meseta del cerco
+static func bank_profile(lat: float, B: float) -> float:
+	var a := absf(lat)
+	var h := 0.0
+	if a < 4.8:
+		h += CROWN * (1.0 - minf(1.0, (a / 4.4) * (a / 4.4)))
+		h -= 0.042 * exp(-pow((a - 0.92) / 0.32, 2.0)) # huellas de las ruedas
+		h += 0.02 * exp(-pow(a / 0.35, 2.0)) # lomo central
+	var t := clampf((a - BANK_FROM) / BANK_LEN, 0.0, 1.0)
+	h += B * t * t * (3.0 - 2.0 * t)
+	return h
+
+## (perfil viejo con zanja: lo usa el estacionamiento de pruebas del kit y el asfalto no)
 static func cross_profile(lat: float) -> float:
 	var a := absf(lat)
 	var h := 0.0
@@ -201,14 +227,18 @@ static func cross_profile(lat: float) -> float:
 func base_height(x: float, z: float) -> float:
 	var nr := nearest(x, z)
 	var d: float = nr["d"]
-	return axis_height(nr, x, z) + profile(float(nr["side"]) if d < 7.0 else 7.0)
+	return axis_height(nr, x, z) + profile_at(int(nr["i"]), float(nr["side"]) if d < fence_half() + 2.0 else fence_half() + 2.0)
 
-## Relieve del terreno lejano (sólo visual): sigue la altura del camino cerca y se mezcla suavemente con lomas propias lejos
+## Relieve del terreno lejano (sólo visual): bajo la cinta del camino y los taludes queda más hondo (la grilla de 6 m no puede asomar), después sigue la meseta y se va
+## mezclando con lomas propias lejos
 func terrain_height(x: float, z: float) -> float:
 	var nr := nearest(x, z)
 	var d: float = nr["d"]
-	if d < 7.0:
-		return axis_height(nr, x, z) - 0.16
+	var i: int = nr["i"]
+	var ah := axis_height(nr, x, z)
+	var fh := fence_half()
+	if d < fh + 1.7:
+		return ah + profile_at(i, float(nr["side"])) - (0.6 if d < fh - 0.4 else 0.05)
 	var num := 0.0
 	var den := 0.0
 	for c in coarse:
@@ -220,8 +250,7 @@ func terrain_height(x: float, z: float) -> float:
 	var far := smoothstep(14.0, 70.0, d)
 	var hills := 5.5 * sin(x * 0.011 + 1.3) * cos(z * 0.014 - 0.4) + 2.4 * sin(x * 0.027 + z * 0.019) + 1.1 * sin(z * 0.05 - x * 0.03)
 	var edge := 1.0 - smoothstep(190.0, 260.0, d)
-	var rise := smoothstep(6.0, 11.0, d) * 0.16 - 0.16 # recupera el escalón del zanjeo bajo el camino
-	return hr * (1.0 - far) + (hr * 0.4 + hills) * far * edge + rise
+	return hr * (1.0 - far) + (hr * 0.4 + hills) * far * edge + float(bank[i]) * (1.0 - smoothstep(fh + 1.7, fh + 30.0, d))
 
 func surface_at(x: float, z: float) -> int:
 	for m in mud:
@@ -237,7 +266,7 @@ func surface_at(x: float, z: float) -> int:
 
 func ground_info(x: float, z: float) -> Vector2:
 	var nr := nearest(x, z) # (una sola búsqueda por consulta: altura y superficie salen de la misma)
-	var h := axis_height(nr, x, z) + profile(float(nr["side"]))
+	var h := axis_height(nr, x, z) + profile_at(int(nr["i"]), float(nr["side"]))
 	for f in features:
 		var cx: float = f["cx"]
 		var cz: float = f["cz"]

@@ -72,7 +72,7 @@ func _wall_chunks(side: float, lat: float, y_off: float, h: float, u_per_m: floa
 			var nl := Vector2(-tg.y, tg.x)
 			var q: Vector2 = dt.pts[k] + nl * side * lat
 			var c := float(dt.cum[k]) if i < n else dt.length
-			var yb := float(dt.hprof[k]) + y_off
+			var yb := float(dt.hprof[k]) + dt.profile_at(k, lat) + y_off
 			st.set_uv(Vector2(c * u_per_m, v_bot))
 			st.add_vertex(Vector3(q.x, yb, q.y))
 			st.set_uv(Vector2(c * u_per_m, v_top))
@@ -105,8 +105,8 @@ func _wall_chunks(side: float, lat: float, y_off: float, h: float, u_per_m: floa
 ## Altura del suelo en cualquier punto (camino y banquina: la física; más lejos: el terreno)
 func gy(x: float, z: float) -> float:
 	var nr := dt.nearest(x, z)
-	if float(nr["d"]) < 6.9:
-		return dt.axis_height(nr, x, z) + DirtTrack.cross_profile(float(nr["side"]))
+	if float(nr["d"]) < dt.fence_half() + 1.7:
+		return dt.axis_height(nr, x, z) + dt.profile_at(int(nr["i"]), float(nr["side"]))
 	return dt.terrain_height(x, z)
 
 func _static_trimesh(mesh: Mesh) -> void:
@@ -169,24 +169,28 @@ func _build_terrain() -> void:
 	var far := _mat_tex("pasto", Vector3(300, 300, 1), 0.95, Color(0.55, 0.66, 0.46))
 	_plane(Vector2(1400, 1400), -8.0, far, Vector3(30, 0, 60))
 
-const ROAD_LAT := [-5.1, -4.6, -4.0, -3.2, -2.4, -1.6, -1.15, -0.95, -0.7, -0.35, 0.0, 0.35, 0.7, 0.95, 1.15, 1.6, 2.4, 3.2, 4.0, 4.6, 5.1]
-const SHOULDER_L := [4.9, 5.2, 5.5, 5.9, 6.3, 6.8]
+const ROAD_LAT := [-4.8, -4.4, -3.8, -3.1, -2.4, -1.7, -1.2, -0.95, -0.7, -0.35, 0.0, 0.35, 0.7, 0.95, 1.2, 1.7, 2.4, 3.1, 3.8, 4.4, 4.8]
+const SLOPE_L := [4.7, 5.0, 5.3, 5.6, 5.9, 6.2, 6.5, 6.8, 7.1, 7.4, 7.8]
+const TOP_L := [7.7, 8.8, 10.0, 11.8]
 
-## Cinta del camino + banquinas (con zanja). Cada vértice usa la altura real del eje y el perfil transversal: es la misma superficie que siente la física
+## Cinta del camino + taludes de tierra a los costados (el camino va hundido) + meseta de pasto donde está el cerco. Cada vértice usa la altura real del eje y el perfil
+## de ese punto: es la misma superficie que siente la física
 func _build_road() -> void:
-	var road := _ribbon(ROAD_LAT, 0.0, "tierra", 3.0, true, Color.WHITE, true)
+	var road := _ribbon(ROAD_LAT, 0.0, "tierra_roja", 3.0, true, Color.WHITE, true)
 	props.add_child(road)
 	_static_trimesh(road.mesh)
-	var left := _ribbon(SHOULDER_L, -0.004, "pasto", 3.0, false, Color(0.86, 0.8, 0.56), false)
-	var neg: Array = []
-	for v in SHOULDER_L:
-		neg.append(-float(v))
-	neg.reverse()
-	var right := _ribbon(neg, -0.004, "pasto", 3.0, false, Color(0.86, 0.8, 0.56), false)
-	props.add_child(left)
-	props.add_child(right)
-	_static_trimesh(left.mesh)
-	_static_trimesh(right.mesh)
+	var neg_s: Array = []
+	for v in SLOPE_L:
+		neg_s.append(-float(v))
+	neg_s.reverse()
+	var neg_t: Array = []
+	for v in TOP_L:
+		neg_t.append(-float(v))
+	neg_t.reverse()
+	for e in [[SLOPE_L, "tierra_roja", Color(0.86, 0.76, 0.68)], [neg_s, "tierra_roja", Color(0.86, 0.76, 0.68)], [TOP_L, "pasto", Color(0.84, 0.78, 0.52)], [neg_t, "pasto", Color(0.84, 0.78, 0.52)]]:
+		var r := _ribbon(e[0], -0.004, String(e[1]), 3.0, false, e[2], false)
+		props.add_child(r)
+		_static_trimesh(r.mesh)
 
 func _ribbon(lats: Array, dy: float, tex: String, tile: float, shade: bool, tint := Color.WHITE, holes := false) -> MeshInstance3D:
 	var st := SurfaceTool.new()
@@ -209,7 +213,7 @@ func _ribbon(lats: Array, dy: float, tex: String, tile: float, shade: bool, tint
 				col = Color(0.74, 0.7, 0.66) if (a > 0.6 and a < 1.3) else (Color(1, 1, 1) if a < 3.6 else Color(0.92, 0.9, 0.75))
 			st.set_color(col)
 			st.set_uv(Vector2(lat / tile, c / tile))
-			st.add_vertex(Vector3(q.x, hk + DirtTrack.cross_profile(lat) + dy, q.y))
+			st.add_vertex(Vector3(q.x, hk + dt.profile_at(k, lat) + dy, q.y))
 	for i in n:
 		for j in m - 1:
 			var v0 := i * m + j
@@ -251,7 +255,7 @@ func _ribbon(lats: Array, dy: float, tex: String, tile: float, shade: bool, tint
 ## Agua en los charcos y en los baches llenos: disco oscuro y brillante a la altura del agua
 func _build_puddles() -> void:
 	var wm := StandardMaterial3D.new()
-	wm.albedo_color = Color(0.2, 0.15, 0.1, 0.85)
+	wm.albedo_color = Color(0.33, 0.16, 0.09, 0.72)
 	wm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	wm.roughness = 0.04
 	wm.metallic_specular = 1.0
@@ -276,7 +280,7 @@ func _build_puddles() -> void:
 			props.add_child(mi)
 			drawn[Vector2i(int(gx), int(gz))] = true
 	# charcos grandes del camino (los de barro)
-	var mm := _mat_tex("tierra", Vector3(0.3, 0.3, 1), 0.3, Color(0.3, 0.2, 0.12))
+	var mm := _mat_tex("tierra_roja", Vector3(0.3, 0.3, 1), 0.3, Color(0.3, 0.15, 0.09))
 	for m in dt.mud:
 		if drawn.has(Vector2i(int(float(m["x"])), int(float(m["z"])))) or float(m["r"]) < 3.0:
 			continue
@@ -317,7 +321,7 @@ func _build_fences() -> void:
 	m.roughness = 0.95
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	for side in [1.0, -1.0]:
-		_wall_chunks(float(side), DirtTrack.FENCE_HALF, DirtTrack.cross_profile(DirtTrack.FENCE_HALF) - 0.05, 1.25, 1.0 / 3.0, 0.0, 1.0, m, true)
+		_wall_chunks(float(side), DirtTrack.FENCE_HALF, -0.05, 1.25, 1.0 / 3.0, 0.0, 1.0, m, true)
 
 func _pick_species() -> Array:
 	var tot := 0
@@ -652,7 +656,7 @@ func _build_props() -> void:
 		bm2.size = Vector3(2.4, 1.2, 0.1)
 		board.mesh = bm2
 		board.material_override = _flat(Color(0.95, 0.75, 0.05), 0.6)
-		board.position = Vector3(q2.x, float(dt.hprof[i]) + 1.6, q2.y)
+		board.position = Vector3(q2.x, gy(q2.x, q2.y) + 1.6, q2.y)
 		var face := atan2(-n2.x * outer, -n2.y * outer) # mira hacia el eje del camino
 		board.rotation.y = face
 		props.add_child(board)
@@ -673,5 +677,5 @@ func _build_props() -> void:
 		cm.height = 1.3
 		post2.mesh = cm
 		post2.material_override = _flat(Color(0.3, 0.3, 0.3))
-		post2.position = Vector3(q2.x, float(dt.hprof[i]) + 0.65, q2.y)
+		post2.position = Vector3(q2.x, gy(q2.x, q2.y) + 0.65, q2.y)
 		props.add_child(post2)

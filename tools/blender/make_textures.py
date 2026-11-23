@@ -239,18 +239,18 @@ def tex_tierra(path, res=1024, red=False):
     nz2 = noise(nt, 140.0 if red else 45.0, 5, 0.6, tc.outputs["Object"])
     vor = voronoi(nt, 330 if red else 120, tc.outputs["Object"])
     if red: # tierra roja de camino rural: grano fino, ocre y anaranjada
-        base = ramp(nt, [(0.0, (0.30, 0.125, 0.055, 1)), (0.5, (0.45, 0.205, 0.095, 1)), (1.0, (0.60, 0.31, 0.15, 1))])
+        base = ramp(nt, [(0.0, (0.40, 0.13, 0.045, 1)), (0.5, (0.62, 0.23, 0.085, 1)), (1.0, (0.80, 0.36, 0.14, 1))])
     else:
         base = ramp(nt, [(0.0, (0.10, 0.060, 0.032, 1)), (0.5, (0.17, 0.105, 0.06, 1)), (1.0, (0.24, 0.155, 0.09, 1))])
     nt.links.new(nz1.outputs["Fac"], base.inputs[0])
-    speck = ramp(nt, [(0.55, (1, 1, 1, 1)), (0.8, (1.35, 1.3, 1.2, 1))])
+    speck = ramp(nt, [(0.25, (0.95, 0.92, 0.9, 1)), (0.55, (1.3, 1.25, 1.2, 1)), (0.85, (1.65, 1.55, 1.45, 1))] if red else [(0.55, (1, 1, 1, 1)), (0.8, (1.35, 1.3, 1.2, 1))])
     nt.links.new(vor.outputs["Distance"], speck.inputs[0])
     c = mix_rgb(nt, 1.0, base.outputs[0], speck.outputs[0], "MULTIPLY")
     p = principled(nt, None, 0.95)
     nt.links.new(c.outputs[0], p.inputs["Base Color"])
     h = math_node(nt, "ADD", nz2.outputs["Fac"], vor.outputs["Distance"])
     bump = nt.nodes.new("ShaderNodeBump")
-    bump.inputs["Strength"].default_value = 1.0
+    bump.inputs["Strength"].default_value = 1.6 if red else 1.0
     bump.inputs["Distance"].default_value = 0.02
     nt.links.new(h.outputs[0], bump.inputs["Height"])
     nt.links.new(bump.outputs[0], p.inputs["Normal"])
@@ -260,7 +260,10 @@ def tex_tierra(path, res=1024, red=False):
     stone_m, snt = mat("piedra")
     stc = snt.nodes.new("ShaderNodeTexCoord")
     sn = noise(snt, 18, 6, 0.6, stc.outputs["Object"])
-    sr = ramp(snt, [(0.0, (0.07, 0.065, 0.06, 1)), (0.6, (0.14, 0.13, 0.115, 1)), (1.0, (0.22, 0.2, 0.18, 1))])
+    if red:
+        sr = ramp(snt, [(0.0, (0.30, 0.17, 0.10, 1)), (0.6, (0.50, 0.33, 0.22, 1)), (1.0, (0.72, 0.55, 0.40, 1))])
+    else:
+        sr = ramp(snt, [(0.0, (0.07, 0.065, 0.06, 1)), (0.6, (0.14, 0.13, 0.115, 1)), (1.0, (0.22, 0.2, 0.18, 1))])
     snt.links.new(sn.outputs["Fac"], sr.inputs[0])
     sp = principled(snt, None, 0.9)
     snt.links.new(sr.outputs[0], sp.inputs["Base Color"])
@@ -306,6 +309,28 @@ def tex_tierra(path, res=1024, red=False):
     camera_ortho((0, 0, 3), (0, 0, 0), area)
     render(path)
     tileify(path)
+    if red:  # lleva el color medio a la tierra roja de las fotos de referencia (el render sale oscuro)
+        from PIL import Image
+        im = np.asarray(Image.open(path).convert("RGB")).astype(np.float32)
+        target = np.array([138.0, 80.0, 50.0])
+        gain = target / np.maximum(im.reshape(-1, 3).mean(axis=0), 1.0)
+        out = im * gain
+        out = np.where(out > 160.0, 160.0 + (out - 160.0) * 0.2, out)  # las piedritas no brillan
+        h, w, _ = out.shape
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        rng2 = np.random.default_rng(3)
+        lf = np.zeros((h, w), np.float32)  # manchas grandes más claras y más oscuras (repetibles: ondas con período entero)
+        for _ in range(7):
+            fx, fy = rng2.integers(1, 5), rng2.integers(1, 5)
+            ph = rng2.uniform(0, 6.28, 2)
+            lf += np.sin(xx / w * 6.2832 * fx + ph[0]) * np.sin(yy / h * 6.2832 * fy + ph[1]) * rng2.uniform(0.5, 1.0)
+        lf = lf / max(1e-6, np.abs(lf).max())
+        out = out * (1.0 + 0.14 * lf[:, :, None])
+        # un poco menos saturado: la tierra seca tiene más gris
+        gray = out.mean(axis=2, keepdims=True)
+        out = gray + (out - gray) * 0.78
+        out = np.clip(out, 0, 255)
+        Image.fromarray(out.astype(np.uint8)).save(path)
 
 def tex_pasto(path, res=1024):
     sc = reset((res, res))

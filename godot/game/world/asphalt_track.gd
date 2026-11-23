@@ -19,6 +19,9 @@ func _ctrl() -> Array:
 func _elev(u: float) -> float:
 	return 2.2 * sin(TAU * u + 0.4) + 1.2 * sin(TAU * 2.0 * u + 1.3) + 0.5 * sin(TAU * 4.0 * u + 2.0)
 
+func _bank(_u: float) -> float:
+	return 0.0
+
 func _setup() -> void:
 	pass # sin lomos, baches ni charcos: el asfalto es parejo
 
@@ -38,6 +41,9 @@ func profile(lat: float) -> float:
 	h += 0.014 * smoothstep(RH - 0.1, RH + 0.15, a) * (1.0 - smoothstep(RH + KERB - 0.1, RH + KERB + 0.2, a))
 	h -= 0.1 * smoothstep(RH + KERB, RH + 4.5, a)
 	return h
+
+func profile_at(_i: int, lat: float) -> float:
+	return profile(lat)
 
 func surface_at(x: float, z: float) -> int:
 	var d: float = nearest(x, z)["d"]
