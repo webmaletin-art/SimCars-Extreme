@@ -1,0 +1,156 @@
+name: Compilar APK (SimCars Extreme)
+
+# Arma el APK LIVIANO (motor + pantalla de arranque, firmado siempre con godot/keystore/simcars.keystore para que las actualizaciones
+# se instalen encima sin perder el progreso) y los dos paquetes que ese APK baja solo al abrirse:
+#   · content.pck  — el juego (código, escenario, texturas, sonidos)
+#   · cars.pck     — autos y pilotos (se vuelve a bajar sólo si cambiaron)
+# Todo se publica en releases de GitHub: «simcars-content-4.7» (paquetes + manifest.json) y «simcars-apk» (el APK para instalar).
+on:
+  push:
+    paths:
+      - 'godot/**'
+      - 'tools/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+  CONTENT_TAG: simcars-content-4.7
+  APK_TAG: simcars-apk
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools build-tools;36.1.0 platforms;android-36'
+
+      - name: Instalar Godot y plantillas de exportación
+        run: |
+          set -e
+          base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          curl -sSL -o godot.zip $base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          unzip -q godot.zip
+          sudo mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          curl -sSL -o tpz.zip $base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          dir=$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p $dir
+          unzip -q -j tpz.zip 'templates/android_*' 'templates/version.txt' -d $dir
+          rm -f tpz.zip godot.zip
+          godot --headless --version
+
+      - name: Configurar Godot (SDK de Android y firma)
+        run: |
+          mkdir -p $HOME/.config/godot
+          cat > $HOME/.config/godot/editor_settings-4.7.tres <<EOF2
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$GITHUB_WORKSPACE/godot/keystore/simcars.keystore"
+          export/android/debug_keystore_user = "simcars"
+          export/android/debug_keystore_pass = "simcars2026"
+          EOF2
+
+      - name: Presets de exportación (número de versión = número de compilación)
+        run: python3 tools/export/make_presets.py --version-code ${GITHUB_RUN_NUMBER} --version-name "0.${GITHUB_RUN_NUMBER}"
+
+      - name: Importar recursos
+        working-directory: godot
+        run: |
+          godot --headless --import || true
+          godot --headless --import || true
+
+      - name: Pruebas rápidas (física de los 6 autos)
+        working-directory: godot
+        run: timeout -k 5 300 godot --headless --script res://tests/perf_test.gd
+
+      - name: Exportar APK liviano y paquetes
+        working-directory: godot
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/godot/keystore/simcars.keystore
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: simcars
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: simcars2026
+        run: |
+          set -e
+          mkdir -p ../build
+          echo "r${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" > game/build_id.txt
+          godot --headless --export-release "Android Light" ../build/simcars-liviano.apk
+          godot --headless --export-pack "Content" ../build/content.pck
+          godot --headless --export-pack "Cars" ../build/cars.pck
+          ls -la ../build
+          test -s ../build/simcars-liviano.apk
+          test -s ../build/content.pck
+          test -s ../build/cars.pck
+
+      - name: Manifiesto del contenido
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, urllib.request
+          def sha(p):
+              h = hashlib.sha256()
+              with open(p, 'rb') as f:
+                  for c in iter(lambda: f.read(1 << 20), b''):
+                      h.update(c)
+              return h.hexdigest()
+          repo = os.environ['GITHUB_REPOSITORY']; tag = os.environ['CONTENT_TAG']
+          base = "https://github.com/%s/releases/download/%s/" % (repo, tag)
+          ver = "r%s-%s" % (os.environ['GITHUB_RUN_NUMBER'], os.environ['GITHUB_SHA'][:7])
+          # versión de los autos = árbol de git de godot/game/models + motor: si no cambiaron, el teléfono no los vuelve a bajar
+          tree = subprocess.check_output(['git', 'rev-parse', 'HEAD:godot/game/models']).decode().strip()
+          cars_ver = "%s-%s" % (tree[:12], os.environ['GODOT_VERSION'])
+          cars = None
+          try:
+              old = json.load(urllib.request.urlopen(base + "manifest.json", timeout=30))
+              for q in old.get("packs", []):
+                  if q.get("name") == "cars" and q.get("version") == cars_ver:
+                      cars = q
+          except Exception as e:
+              print("sin manifiesto anterior:", e)
+          if cars is None:
+              cars = {"name": "cars", "version": cars_ver, "url": base + "cars.pck", "size": os.path.getsize('build/cars.pck'), "sha256": sha('build/cars.pck')}
+              open('build/cars_new', 'w').write('1')
+          m = {"version": ver, "url": base + "content.pck", "size": os.path.getsize('build/content.pck'), "sha256": sha('build/content.pck'), "packs": [cars]}
+          json.dump(m, open('build/manifest.json', 'w'), indent=1)
+          print(json.dumps(m, indent=1))
+          PY
+
+      - name: Publicar paquetes (los baja solo el APK)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $CONTENT_TAG >/dev/null 2>&1 || gh release create $CONTENT_TAG --title "SimCars Extreme · contenido (Godot 4.7)" --notes "Paquetes que descarga solo el APK liviano al abrirse. No hace falta bajarlos a mano." --prerelease --target ${GITHUB_SHA}
+          if [ -f build/cars_new ]; then gh release upload $CONTENT_TAG build/cars.pck --clobber; fi
+          gh release upload $CONTENT_TAG build/content.pck build/manifest.json --clobber
+
+      - name: Publicar el APK (link directo para instalar)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $APK_TAG >/dev/null 2>&1 || gh release create $APK_TAG --title "SimCars Extreme · APK para instalar" --notes "Instalá SimCars-Extreme.apk. La primera vez baja el juego y los autos (~250 MB). Las actualizaciones se instalan encima sin perder el progreso (firma fija)." --prerelease --target ${GITHUB_SHA}
+          cp build/simcars-liviano.apk build/SimCars-Extreme.apk
+          gh release upload $APK_TAG build/SimCars-Extreme.apk --clobber
+
+      - name: Subir APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimCars-Extreme-apk
+          path: build/SimCars-Extreme.apk

@@ -2,3 +2,6 @@ godot/.godot/
 build/
 *.tmp
 __pycache__/
+godot/game/models/**/*.png
+godot/game/models/**/*.png.import
+godot/game/build_id.txt

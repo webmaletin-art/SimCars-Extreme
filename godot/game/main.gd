@@ -6,6 +6,7 @@ const Showroom := preload("res://game/ui/showroom.gd")
 const Menu := preload("res://game/ui/menu.gd")
 const Play := preload("res://game/play.gd")
 const Garage := preload("res://game/data/garage.gd")
+const Gfx := preload("res://game/ui/gfx.gd")
 
 var profile: Dictionary
 var showroom: Node3D
@@ -15,7 +16,7 @@ var play: Node3D
 
 func _ready() -> void:
 	profile = Profile.load_profile()
-	Engine.max_fps = int(profile["settings"]["fps_cap"])
+	Gfx.apply_screen(get_tree(), profile["settings"])
 	var args := OS.get_cmdline_user_args()
 	if "--play" in args or "--autotest" in args:
 		for a in args:

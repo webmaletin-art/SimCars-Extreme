@@ -40,8 +40,7 @@ CARS = {
         name="McLaren F1 GTR", maker="McLaren", year=1995, kind="race",
         src="mclaren F1.glb",
         # el archivo trae las dos versiones (F1 de calle y GTR/LM) una arriba de la otra: nos quedamos con la GTR (las que llevan «(2)» o «[LM]»)
-        drop=["Danos", "suspension", "storage", "engine", "chassis_a",
-              "tahook", "speedook", "oilook", "petrolook", "tempook",
+        drop=["Danos",
               "fender[F1]", "f_steer[F1]", "interiors[F1]", "wheel[F1]", "wheel[F1] (2)",
               "bonnet_ok", "bonnet_dam", "bump_front_ok", "bump_front_dam", "bump_rear_ok", "bump_rear_dam",
               "door_lr_ok", "door_lr_dam", "door_rr_ok", "door_rr_dam"],
@@ -77,17 +76,18 @@ CARS = {
             "door_rf": {"ok": ["door_rf_ok"], "dam": []},
         },
         steer=[], steer_xyz=(0.36, 0.25, 0.51), drive_side="L", paint=["remap"],
-        fix_doors={"door_lf": 1.00, "door_rf": 1.00},
+        part_offset={"door_lf": (0.0, 0.0, -0.57)},  # la puerta venía corrida 57 cm hacia adelante (fuera de su hueco)
+        mirror_parts={"door_rf": "door_lf"},  # la derecha venía abierta y torcida: es el espejo exacto de la izquierda (que está cerrada)
         wf=0.43, budget=46000,
     ),
     # ───────────────────────────── Ford Ranger Limited (2023) ─────────────────────────────
     "ranger_limited": dict(
         name="Ford Ranger Limited", maker="Ford", year=2023, kind="pickup",
         src="huntley.glb",
-        drop=["Danos", "FR1", "FR2", "PackLTD", "Piso", "Guardabarros", "InteriorCaja"],
+        drop=["Danos", "FR2"],  # FR2 es una copia exacta de FR1 (se pisaban)
         # el modelo trae UNA sola rueda (delantera derecha, «LTD+-20»): se copia a las cuatro (eje trasero a 3,27 m: pasoruedas de atrás)
         wheels={"fr": ("obj", ["LTD+-20"]),
-                "fl": ("copy", "fr", True, None), "rr": ("copy", "fr", False, -1.72), "rl": ("copy", "fr", True, -1.72)},
+                "fl": ("copy", "fr", True, None), "rr": ("copy", "fr", False, -1.766), "rl": ("copy", "fr", True, -1.766)},
         parts={
             "bonnet": {"ok": ["bonnet_ok"], "dam": []},
             "boot": {"ok": ["boot_ok"], "dam": []},
@@ -105,7 +105,7 @@ CARS = {
     "rx3_savanna": dict(
         name="Mazda RX-3 Savanna", maker="Mazda", year=1973, kind="classic",
         src="hustler.glb",
-        drop=["undercarriage", "lightshidhead", "svet1", "svet2", "svet3"],
+        drop=[],
         wheels={"fl": ("obj", ["Wheel FL"]), "fr": ("obj", ["Wheel FR"]), "rl": ("obj", ["Wheel RL"]), "rr": ("obj", ["Wheel RR"])},
         parts={
             "bonnet": {"ok": ["hood"], "dam": []},
@@ -123,10 +123,10 @@ CARS = {
     "cls63_amg": dict(
         name="Mercedes-Benz CLS 63 AMG", maker="Mercedes-Benz", year=2015, kind="sedan",
         src="Cls63.glb",
-        drop=["exhaust_ok", "engined", "engine_badge", "cockpit"],
+        drop=[],
         # una sola rueda en el archivo («Mesh 001», delantera derecha): se copia a las cuatro; eje trasero a 2,945 m
         wheels={"fr": ("obj", ["Mesh 001"]),
-                "fl": ("copy", "fr", True, None), "rr": ("copy", "fr", False, -1.63), "rl": ("copy", "fr", True, -1.63)},
+                "fl": ("copy", "fr", True, None), "rr": ("copy", "fr", False, -1.778), "rl": ("copy", "fr", True, -1.778)},
         parts={
             "bonnet": {"ok": ["bonnet", "bonnet_badge"], "dam": []},
             "boot": {"ok": ["boot"], "dam": []},

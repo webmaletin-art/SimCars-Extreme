@@ -20,6 +20,8 @@ static func defaults() -> Dictionary:
 			"parked": 7, "grass": 1.0, "trees": 1.0, "particles": 1.0, "wind": 0.6,
 			"steer_mode": "wheel", "wheel_real": 0, "gyro": false, "manual": false, "abs": true, "tc": 50.0, "stab": 30.0,
 			"volume": 80.0, "units_mph": false, "backdrop": true, "cones": true,
+			"screen_res": "NATIVA", "vsync": true, "particles_on": true, "view_dist": 650, "detail_dist": 1.0, "shadow_dist": 55.0,
+			"player_lite": false, "pilot_outside": true, "hud_fps": false,
 		},
 		"stats": {"km": 0.0, "time": 0.0, "top_kmh": 0.0, "hits": 0, "parts_lost": 0},
 	}

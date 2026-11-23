@@ -118,8 +118,8 @@ def run(car_id, cars_dir, out_dir, lite=False):
         WHEEL_TRIS, MAX_TEX = 450, 256
         R["budget"] = 7000
         R["heavy"] = list(R.get("heavy", [])) + [n for n in R.get("extra_heavy", [])]
-    else:
-        WHEEL_TRIS, MAX_TEX = 3000, 1024
+    else:  # auto del jugador: TAL CUAL el original (sin reducir triángulos ni texturas, con su interior)
+        WHEEL_TRIS, MAX_TEX = 0, 0
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=os.path.join(cars_dir, R["src"]))
     scene = bpy.context.scene
@@ -166,8 +166,9 @@ def run(car_id, cars_dir, out_dir, lite=False):
     for corner, spec in R["wheels"].items():
         if spec[0] == "obj":
             objs = [meshes.pop(n) for n in spec[1]]
-            for o in objs:
-                decimate(o, WHEEL_TRIS // max(1, len(objs)))
+            if WHEEL_TRIS > 0:
+                for o in objs:
+                    decimate(o, WHEEL_TRIS // max(1, len(objs)))
             wheel_objs[corner] = objs
     for corner, spec in R["wheels"].items():
         if spec[0] == "copy":
@@ -230,6 +231,33 @@ def run(car_id, cars_dir, out_dir, lite=False):
         for c in centers:
             centers[c].x -= mid
 
+    # piezas corridas de su lugar en el archivo original (medido con el hueco de la carrocería)
+    for pn, off in R.get("part_offset", {}).items():
+        for k in ("ok", "dam"):
+            for n in R["parts"][pn].get(k, []):
+                if n in meshes:
+                    move_obj(meshes[n], g2b(off))
+    # piezas espejadas: la del otro lado se reemplaza por el espejo exacto (X → −X)
+    for tgt_part, src_part in R.get("mirror_parts", {}).items():
+        for n in R["parts"][tgt_part]["ok"]:
+            drop(n)
+        new_names = []
+        for i, n in enumerate(R["parts"][src_part]["ok"]):
+            o = meshes.get(n)
+            if o is None:
+                continue
+            m = o.copy()
+            m.data = o.data.copy()
+            m.data.transform(Matrix.Scale(-1.0, 4, Vector((1, 0, 0))))
+            m.data.flip_normals()
+            nm = R["parts"][tgt_part]["ok"][i] if i < len(R["parts"][tgt_part]["ok"]) else n + "_mirror"
+            m.name = nm
+            bpy.context.collection.objects.link(m)
+            meshes[m.name] = m
+            new_names.append(m.name)
+        R["parts"] = dict(R["parts"])
+        R["parts"][tgt_part] = {"ok": new_names, "dam": []}
+
     # puertas que vienen abiertas en el archivo (tijera/mariposa): se giran sobre su centro hasta que el panel quede vertical y se apoyan al ras de la carrocería
     for dn, x_out in R.get("fix_doors", {}).items():
         for name in R["parts"][dn]["ok"]:
@@ -252,7 +280,10 @@ def run(car_id, cars_dir, out_dir, lite=False):
             dx = (x_out - mx_.x) if sgn > 0 else (-x_out - mn_.x)
             o.data.transform(Matrix.Translation(Vector((dx, 0, 0))))
 
-    # 4. reducir
+    # 4. reducir (sólo la versión liviana de los autos estacionados)
+    if not lite:
+        R["budget"] = 10 ** 9
+        R["heavy"] = []
     heavy = [meshes[n] for n in R.get("heavy", []) if n in meshes]
     for o in heavy:  # interior, chasis y luces: se simplifican mucho (casi no se ven)
         decimate(o, max(300, int(tris(o) * 0.12)))
@@ -265,7 +296,7 @@ def run(car_id, cars_dir, out_dir, lite=False):
         t = tris(o)
         if t > 400:
             decimate(o, max(300, int(t * r)))
-    for img in bpy.data.images:
+    for img in (bpy.data.images if MAX_TEX > 0 else []):
         if img.size[0] > MAX_TEX or img.size[1] > MAX_TEX:
             f = MAX_TEX / max(img.size)
             img.scale(max(4, int(img.size[0] * f)), max(4, int(img.size[1] * f)))
@@ -347,6 +378,36 @@ def run(car_id, cars_dir, out_dir, lite=False):
             adopt(o, we)
         mn, mx = bbox(objs)
         wheel_meta[corner] = {"center": b2g(centers[corner]), "radius": round((mx.z - mn.z) / 2, 4), "width": round(mx.x - mn.x, 4)}
+
+    # UNIR mallas (no cambia ni un triángulo): los autos de GTA vienen en decenas de objetos sueltos y cada uno es un «dibujo» más por material.
+    # Se une todo lo que cuelga de un mismo grupo (carrocería, cada pieza sana / dañada, cada rueda, el volante): queda un dibujo por material.
+    def join_children(parent):
+        kids = [c for c in parent.children if c.type == "MESH"]
+        if len(kids) < 2:
+            return
+        bpy.ops.object.select_all(action="DESELECT")
+        for k in kids:
+            k.select_set(True)
+        bpy.context.view_layer.objects.active = kids[0]
+        bpy.ops.object.join()
+    bpy.context.view_layer.update()
+    for e in [o for o in bpy.data.objects if o.type == "EMPTY"]:
+        if e.name in ("body", "ok", "dam", "steer_wheel") or e.name.startswith(("wheel_", "ok.", "dam.")):
+            join_children(e)
+    # pintura y plásticos opacos: los materiales de GTA vienen casi todos en modo «mezcla» aunque no tengan nada transparente (cuesta mucho y se ordena mal)
+    GLASS = ("glass", "vidrio", "window", "wind", "light", "lamp", "cristal", "transpar", "tint", "lente", "optica", "reflector", "farol", "steklo", "glow")
+    for m in bpy.data.materials:
+        if any(k in m.name.lower() for k in GLASS):
+            continue
+        try:
+            m.surface_render_method = "DITHERED"
+        except Exception:
+            pass
+        if m.use_nodes:
+            for n in m.node_tree.nodes:
+                if n.type == "BSDF_PRINCIPLED" and not n.inputs["Alpha"].is_linked and n.inputs["Alpha"].default_value > 0.98:
+                    n.inputs["Alpha"].default_value = 1.0
+        m["opaque"] = True
 
     mn, mx = bbox([o for o in bpy.data.objects if o.type == "MESH"])
     meta = {

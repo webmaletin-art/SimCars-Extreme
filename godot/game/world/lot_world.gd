@@ -27,6 +27,55 @@ var rng := RandomNumberGenerator.new()
 var _cone_mesh: ArrayMesh
 var _mats := {}
 var _mm_all: Array = []
+## Grupos para el diagnóstico y la «distancia de detalle»: nombre → [[nodo, alcance base (m)]]
+var groups := {"grass": [], "trees": [], "backdrop": [], "parked": [], "misc": []}
+var detail_k := 1.0
+
+func _tag(n: Node, g: String, rng: float) -> void:
+	if g == "auto": # multimallas de vegetación: árboles por un lado, el resto (pasto, flores, arbustos) por otro
+		var mi := n as GeometryInstance3D
+		g = "trees" if mi.has_meta("tree") else "grass"
+		rng = mi.visibility_range_end
+	groups[g].append([n, rng])
+	if n is GeometryInstance3D and rng > 0.0:
+		(n as GeometryInstance3D).visibility_range_end = rng * detail_k
+
+## Autos estacionados: sólo la carrocería hace sombra (las piezas, ruedas e interior no: cada malla con sombra se dibuja dos veces más)
+func _cheap_shadows(v: Node3D) -> void:
+	for mi in v.find_children("*", "MeshInstance3D", true, false):
+		var p: Node = mi.get_parent()
+		if p == null or p.name != "body":
+			(mi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+## «Distancia de detalle»: multiplica hasta dónde se dibuja la vegetación, los autos estacionados y lo chico (0,3 = muy cerca … 2 = lejos)
+func set_detail_distance(k: float) -> void:
+	detail_k = k
+	for g in groups:
+		for e in groups[g]:
+			var n: Node = e[0]
+			var r: float = e[1]
+			if not is_instance_valid(n) or r <= 0.0:
+				continue
+			if n is GeometryInstance3D:
+				(n as GeometryInstance3D).visibility_range_end = r * k
+			elif n is Node3D: # autos estacionados: cada malla del modelo
+				for c in n.find_children("*", "GeometryInstance3D", true, false):
+					(c as GeometryInstance3D).visibility_range_end = r * k
+
+## Distancia de dibujo: la niebla se cierra antes para tapar el corte; los edificios de fondo sólo si se llega a verlos
+func set_view_distance(d: float) -> void:
+	var we := get_node_or_null("WorldEnvironment") as WorldEnvironment
+	for c in get_children():
+		if c is WorldEnvironment:
+			we = c
+	if we != null:
+		we.environment.fog_density = clampf(2.6 / d, 0.0022, 0.03)
+	set_group_visible("backdrop", d >= 180.0 and bool(opts["backdrop"]))
+
+func set_group_visible(g: String, on: bool) -> void:
+	for e in groups.get(g, []):
+		if is_instance_valid(e[0]):
+			(e[0] as Node3D).visible = on
 var wind := 0.6
 
 func _tex(n: String) -> Texture2D:
@@ -183,6 +232,7 @@ func _build_features() -> void:
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		props.add_child(mi)
+		_tag(mi, "misc", 160.0)
 		var sb := StaticBody3D.new()
 		sb.collision_layer = 1
 		sb.collision_mask = 0
@@ -312,6 +362,7 @@ func _build_poles() -> void:
 		n.position = Vector3(p.x, 0, p.y)
 		n.rotation.y = rng.randf() * TAU
 		props.add_child(n)
+		_tag(n, "misc", 160.0)
 		poles[id] = {"node": n, "x": p.x, "z": p.y}
 		track.add_circle(p.x, p.y, 0.24, id, null, true)
 		i += 1
@@ -496,6 +547,8 @@ func _build_parked() -> void:
 		v.rotation.y = yaw
 		v.debris_root = debris
 		props.add_child(v)
+		_tag(v, "parked", 140.0)
+		_cheap_shadows(v)
 		var pcol: Dictionary = Garage.PAINTS[1 + rng.randi() % (Garage.PAINTS.size() - 1)]
 		v.set_paint(Color.html(pcol["c"]))
 		# la física de los autos estacionados: tres círculos a lo largo
@@ -521,6 +574,8 @@ func _build_parked() -> void:
 		v2.rotation.y = yaw2
 		v2.debris_root = debris
 		props.add_child(v2)
+		_tag(v2, "parked", 140.0)
+		_cheap_shadows(v2)
 		v2.set_paint(Color.html((Garage.PAINTS[1 + rng.randi() % (Garage.PAINTS.size() - 1)] as Dictionary)["c"]))
 		var m2: Dictionary = v2.meta
 		var L2: float = minf(float(m2.get("length", 4.6)) * 0.9, 5.0)
@@ -554,7 +609,7 @@ func _sway_mat(tex: String, amp := 0.05, tint := Color.WHITE) -> ShaderMaterial:
 	m.set_shader_parameter("wind", wind)
 	return m
 
-func _multi(tex: String, w: float, h: float, xforms: Array, amp := 0.05, tint := Color.WHITE, vis_end := 0.0) -> MultiMeshInstance3D:
+func _multi(tex: String, w: float, h: float, xforms: Array, amp := 0.05, tint := Color.WHITE, vis_end := 0.0, is_tree := false) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = true
@@ -569,8 +624,11 @@ func _multi(tex: String, w: float, h: float, xforms: Array, amp := 0.05, tint :=
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if vis_end > 0.0:
 		mi.visibility_range_end = vis_end
+	if is_tree:
+		mi.set_meta("tree", true)
 	mi.extra_cull_margin = 4.0
 	props.add_child(mi)
+	_tag(mi, "auto", 0.0)
 	_mm_all.append(mi)
 	return mi
 
@@ -632,7 +690,7 @@ func _build_nature() -> void:
 		var arr: Array = groups[s[0]]
 		if arr.is_empty():
 			continue
-		var mmi := _multi(s[0], float(s[1]) * float(s[2]), float(s[1]), arr, 0.06, Color(0.96, 0.98, 0.96), 190.0)
+		var mmi := _multi(s[0], float(s[1]) * float(s[2]), float(s[1]), arr, 0.06, Color(0.96, 0.98, 0.96), 190.0, true)
 		idx_base[s[0]] = mmi
 	for it in inner_trees:
 		var mm_i: MultiMeshInstance3D = idx_base.get(it["sp"])
@@ -707,6 +765,7 @@ func _build_nature() -> void:
 		mi.position = Vector3(p3.x, 0.35 * sc3, p3.y)
 		mi.rotation.y = rng.randf() * TAU
 		props.add_child(mi)
+		_tag(mi, "grass", 80.0)
 		track.add_circle(p3.x, p3.y, 0.75 * sc3, "rock")
 		_static_box(mi.position, Vector3(1.3, 0.8, 1.2) * sc3)
 
@@ -749,6 +808,7 @@ func _build_signs() -> void:
 		post.material_override = _flat(Color(0.3, 0.3, 0.32))
 		post.position = Vector3(pos.x, pos.y * 0.5, pos.z)
 		props.add_child(post)
+		_tag(post, "misc", 120.0)
 		var board := MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = Vector3(0.05, 0.62, 3.6) if float(it[2]) != 0.0 else Vector3(3.6, 0.62, 0.05)
@@ -756,6 +816,7 @@ func _build_signs() -> void:
 		board.material_override = _flat(Color(0.09, 0.32, 0.55))
 		board.position = Vector3(pos.x, pos.y + 0.2, pos.z)
 		props.add_child(board)
+		_tag(board, "misc", 120.0)
 		for side in [1.0, -1.0]:
 			var lb := Label3D.new()
 			lb.text = String(it[0])
@@ -768,6 +829,7 @@ func _build_signs() -> void:
 			lb.position = board.position + (Vector3(0.04 * side, 0, 0) if float(it[2]) != 0.0 else Vector3(0, 0, 0.04 * side))
 			lb.rotation.y = (PI / 2.0 if side > 0 else -PI / 2.0) if float(it[2]) != 0.0 else (0.0 if side > 0 else PI)
 			props.add_child(lb)
+			_tag(lb, "misc", 120.0)
 
 # ───────────────────────── fondo de cartón ─────────────────────────
 func _building_mesh(w: float, h: float, d: float, tile_w: float, tile_h: float) -> ArrayMesh:
@@ -812,6 +874,7 @@ func _build_backdrop() -> void:
 			mi.rotation.y = -ang + PI / 2.0 + r2.randf_range(-0.15, 0.15)
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			props.add_child(mi)
+			_tag(mi, "backdrop", 0.0)
 			# techo plano de cartón
 			var roof := MeshInstance3D.new()
 			var rm := BoxMesh.new()

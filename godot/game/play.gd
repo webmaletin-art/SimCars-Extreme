@@ -20,6 +20,8 @@ const Garage := preload("res://game/data/garage.gd")
 const Profile := preload("res://game/save/profile.gd")
 const OptionsPanel := preload("res://game/ui/options_panel.gd")
 const UI := preload("res://game/ui/ui_kit.gd")
+const Gfx := preload("res://game/ui/gfx.gd")
+const PerfProbe := preload("res://game/diag/perf_probe.gd")
 
 const STEP := 1.0 / 120.0 # la física SIEMPRE a 120 Hz (se interpola al dibujar)
 const START := Vector3(0.0, 0.0, -25.5)
@@ -75,6 +77,8 @@ func _ready() -> void:
 		elif a.begins_with("--dbgcam="): # x,y,z,tx,ty,tz en el marco del auto (para mirar al piloto desde afuera en las capturas)
 			for v in a.substr(9).split(","):
 				dbg_cam.append(float(v))
+		elif a == "--perf": # corre el diagnóstico solo y escribe el informe (pruebas)
+			call_deferred("_auto_perf")
 		elif a == "--crash":
 			crash = true
 		elif a == "--still":
@@ -127,7 +131,7 @@ func _spawn_car() -> void:
 	car.restart_history(0.0)
 	sim_t = 0.0
 	acc = 0.0
-	visual = CarVisual.new(car_id, false)
+	visual = CarVisual.new(car_id, bool(_S("player_lite")))
 	visual.debris_root = world.debris
 	add_child(visual)
 	var pc := Garage.paint_of(profile, car_id)
@@ -326,6 +330,7 @@ func _show_pause_main() -> void:
 			cam_panel.visible = true
 			_refresh_cam_panel()],
 		["AJUSTES", false, _show_pause_options],
+		["RENDIMIENTO (diagnóstico)", false, _show_perf],
 		["REPARAR EL AUTO", false, func() -> void:
 			visual.repair()
 			_toggle_pause()],
@@ -363,6 +368,66 @@ func _show_pause_options() -> void:
 	top.add_child(UI.label("   AJUSTES", 30, Color.WHITE))
 	v.add_child(OptionsPanel.build(profile, func(_k: String) -> void: _apply_settings(), true))
 
+## Diagnóstico de rendimiento: se mide con el juego andando (sin pausa), mostrando sólo un cartel; al final se ve el informe y se copia
+var _perf_text: TextEdit
+func _show_perf() -> void:
+	for c in pause_panel.get_children():
+		if c is not ColorRect:
+			c.queue_free()
+	var panel := UI.panel(Vector2(1100, 0), UI.BG, 18, 14.0)
+	panel.position = Vector2(90, 20)
+	pause_panel.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	panel.add_child(v)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 10)
+	v.add_child(top)
+	var bk := UI.button("◀ VOLVER", Vector2(160, 48), 20)
+	bk.pressed.connect(_show_pause_main)
+	top.add_child(bk)
+	var go := UI.button("MEDIR AHORA (≈25 s)", Vector2(300, 48), 20, true)
+	top.add_child(go)
+	var cp := UI.button("COPIAR INFORME", Vector2(240, 48), 20)
+	top.add_child(cp)
+	_perf_text = TextEdit.new()
+	_perf_text.custom_minimum_size = Vector2(1060, 420)
+	_perf_text.editable = false
+	_perf_text.add_theme_font_size_override("font_size", 14)
+	_perf_text.text = "Tocá MEDIR AHORA: el juego sigue andando y va apagando de a un sistema por vez para ver cuánto cuesta cada uno en tu teléfono.\nDejá el auto quieto mirando la parte del escenario donde anda más lento.\n\nMATERIALES EN PANTALLA (estimado):\n" + "\n".join(_probe().material_report(14))
+	v.add_child(_perf_text)
+	cp.pressed.connect(func() -> void: DisplayServer.clipboard_set(_perf_text.text))
+	go.pressed.connect(func() -> void:
+		_toggle_pause() # se mide jugando
+		lbl_dmg.text = "MIDIENDO RENDIMIENTO… no toques nada (≈25 s)"
+		var pr: Node = _probe()
+		pr.run()
+		var rep: String = await pr.finished
+		profile["last_perf"] = rep
+		Profile.save_profile(profile)
+		if not paused:
+			_toggle_pause()
+		_show_perf()
+		_perf_text.text = rep)
+
+func _auto_perf() -> void:
+	await get_tree().create_timer(2.0).timeout
+	var pr: Node = _probe()
+	pr.run()
+	var rep: String = await pr.finished
+	print(rep)
+	get_tree().quit()
+
+var _probe_node: Node
+func _probe():
+	if _probe_node == null:
+		_probe_node = PerfProbe.new()
+		_probe_node.game = self
+		_probe_node.world = world
+		_probe_node.process_mode = Node.PROCESS_MODE_ALWAYS
+		add_child(_probe_node)
+	return _probe_node
+
 func _toggle_pause() -> void:
 	paused = not paused
 	get_tree().paused = paused
@@ -384,38 +449,47 @@ func _unhandled_key_input(e: InputEvent) -> void:
 
 # ───────────────────────── ajustes ─────────────────────────
 func _apply_settings() -> void:
-	var sh: String = String(_S("shadows"))
+	var S: Dictionary = profile["settings"]
+	Gfx.apply_screen(get_tree(), S)
+	var sh: String = String(S["shadows"])
 	var sun: DirectionalLight3D = world.sun
 	sun.shadow_enabled = sh != "off"
 	if sh != "off":
 		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if sh == "baja" else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-		sun.directional_shadow_max_distance = {"baja": 28.0, "media": 55.0, "alta": 85.0}[sh]
-	var vp := get_viewport()
-	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-	vp.scaling_3d_scale = clampf(float(_S("res_scale")), 0.3, 1.0)
-	Engine.max_fps = int(_S("fps_cap"))
-	fx.intensity = clampf(float(_S("particles")), 0.0, 1.0)
-	controls.steer_mode = String(_S("steer_mode"))
-	controls.wheel_real = int(_S("wheel_real"))
-	controls.gyro_on = bool(_S("gyro"))
-	controls.use_mph = bool(_S("units_mph"))
-	controls.manual = bool(_S("manual"))
+		sun.directional_shadow_max_distance = float(S.get("shadow_dist", 55.0))
+		RenderingServer.directional_shadow_atlas_set_size({"baja": 1024, "media": 2048, "alta": 4096}[sh], true)
+	# distancia de dibujo: lo que está más lejos no se calcula; la niebla tapa el corte
+	var vd := float(S.get("view_dist", 650))
+	cam.far = vd
+	world.set_view_distance(vd)
+	world.set_detail_distance(float(S.get("detail_dist", 1.0)))
+	var parts_on := bool(S.get("particles_on", true))
+	fx.visible = parts_on
+	fx.intensity = clampf(float(S["particles"]), 0.0, 1.0) if parts_on else 0.0
+	controls.steer_mode = String(S["steer_mode"])
+	controls.wheel_real = int(S["wheel_real"])
+	controls.gyro_on = bool(S["gyro"])
+	controls.use_mph = bool(S["units_mph"])
+	controls.manual = bool(S["manual"])
 	if car != null:
-		car.phys.manual = bool(_S("manual"))
+		car.phys.manual = bool(S["manual"])
 		var d: Dictionary = CarBuild.build_params(Garage.vehicles()[car_id], {"upg": {}, "tune": {}, "tires": "street", "tiresOwned": ["street"]},
-			{"abs": bool(_S("abs")), "tc": float(_S("tc")), "stab": float(_S("stab"))})
+			{"abs": bool(S["abs"]), "tc": float(S["tc"]), "stab": float(S["stab"])})
 		car.phys.V = VehicleParams.from_dict(d)
 		car.phys.setup()
-	world.set_wind(float(_S("wind")))
-	AudioServer.set_bus_volume_db(0, linear_to_db(clampf(float(_S("volume")) / 100.0, 0.0001, 1.0)))
-	lbl_fps.visible = bool(_S("show_fps"))
+	world.set_wind(float(S["wind"]))
+	AudioServer.set_bus_volume_db(0, linear_to_db(clampf(float(S["volume"]) / 100.0, 0.0001, 1.0)))
+	lbl_fps.visible = bool(S["show_fps"])
 	if cockpit != null:
 		cockpit.height = float(profile["pilot_height"])
 		_apply_pilot_adj()
+		_update_camera_mode()
 
 func _update_camera_mode() -> void:
 	if cockpit != null:
 		cockpit.set_inside(rig.is_inside())
+		# con las cámaras de afuera el piloto se puede ocultar (opción): no se calcula su pose ni se dibuja
+		cockpit.set_visible(rig.is_inside() or bool(_S("pilot_outside")))
 
 func _save_stats() -> void:
 	Profile.save_profile(profile)
@@ -498,7 +572,7 @@ func _handle_hits(imp: Dictionary, p) -> void:
 	if spd < 1.2:
 		return
 	profile["stats"]["hits"] = int(profile["stats"]["hits"]) + 1
-	var wpt := Vector3(float(imp["wx"]), p.py + 0.5, float(imp["wz"]))
+	var wpt := Vector3(float(imp["wx"]), p.py - car.phys.V.comHeight + 0.55, float(imp["wz"]))
 	var ndir := Vector3(float(imp["nx"]), 0, float(imp["nz"]))
 	var xf := visual.global_transform
 	var lpt := xf.affine_inverse() * wpt
@@ -511,14 +585,26 @@ func _handle_hits(imp: Dictionary, p) -> void:
 	if String(imp.get("id", "")) == "tree":
 		world.kick_tree(float(imp["wx"]), float(imp["wz"]), clampf(spd / 12.0, 0.2, 1.0))
 
+var _lbl_t := 0.0
+var _lbl_last := ["", "", ""]
 func _update_labels(spd: float, p) -> void:
+	_lbl_t -= get_process_delta_time()
+	if _lbl_t > 0.0:
+		return
+	_lbl_t = 0.25 # (el texto se rearma 4 veces por segundo y sólo si cambió: la interfaz no gasta cuadro a cuadro)
 	var stt := visual.status()
-	lbl_info.text = "%s  ·  cámara: %s" % [Garage.vehicles()[car_id]["name"], rig.cam_name()]
-	lbl_fps.text = "%d FPS" % Engine.get_frames_per_second()
+	var t0 := "%s  ·  cámara: %s" % [Garage.vehicles()[car_id]["name"], rig.cam_name()]
+	var t1 := "%d FPS · %.1f ms" % [Engine.get_frames_per_second(), 1000.0 / maxf(1.0, Engine.get_frames_per_second())] if lbl_fps.visible else ""
+	var t2 := ""
 	if visual.damage_total > 0.5 or stt["gone"] > 0:
-		lbl_dmg.text = "DAÑO %d%%  ·  piezas caídas: %d  ·  dañadas: %d" % [int(visual.damage_total), stt["gone"], stt["hurt"]]
-	else:
-		lbl_dmg.text = ""
+		t2 = "DAÑO %d%%  ·  piezas caídas: %d  ·  dañadas: %d" % [int(visual.damage_total), stt["gone"], stt["hurt"]]
+	if t0 != _lbl_last[0]:
+		lbl_info.text = t0
+	if t1 != _lbl_last[1]:
+		lbl_fps.text = t1
+	if t2 != _lbl_last[2]:
+		lbl_dmg.text = t2
+	_lbl_last = [t0, t1, t2]
 
 # ───────────────────────── pruebas automáticas / capturas ─────────────────────────
 

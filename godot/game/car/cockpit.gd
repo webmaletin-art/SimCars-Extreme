@@ -63,9 +63,10 @@ func _measure() -> void:
 	n_wheel = Vector3(a[0], a[1], a[2]).normalized()
 	wheel_r = float(o.get("wheel_r", clampf(float(meta.get("steer_radius", 0.19)), 0.15, 0.24)))
 	xD = S.x
-	eZ = S.z - 0.60
+	# medidas de una butaca real respecto del volante: cadera ~0,52 m detrás del aro y ~0,36 m más abajo; ojos ~0,27 m arriba del centro del aro
+	eZ = S.z - 0.42 + float(o.get("eye_dz", 0.0))
 	eY = S.y + 0.27 + float(o.get("eye_dy", 0.0))
-	hip_y = S.y - 0.31 + float(o.get("hip_dy", 0.0))
+	hip_y = S.y - 0.36 + float(o.get("hip_dy", 0.0))
 	floor_y = clampf(S.y - 0.80, 0.08, 0.5)
 	var rhd := String(meta.get("drive_side", "L")) == "R"
 	sh_i = 1 if rhd else 0

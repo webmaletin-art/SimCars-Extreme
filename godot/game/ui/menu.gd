@@ -8,6 +8,7 @@ const UI := preload("res://game/ui/ui_kit.gd")
 const Garage := preload("res://game/data/garage.gd")
 const Profile := preload("res://game/save/profile.gd")
 const OptionsPanel := preload("res://game/ui/options_panel.gd")
+const Gfx := preload("res://game/ui/gfx.gd")
 
 var profile: Dictionary
 var showroom: Node3D
@@ -259,4 +260,4 @@ func _options() -> void:
 	v.add_theme_constant_override("separation", 8)
 	panel.add_child(v)
 	v.add_child(UI.label("AJUSTES", 34, Color.WHITE))
-	v.add_child(OptionsPanel.build(profile, func(_k: String) -> void: pass, false))
+	v.add_child(OptionsPanel.build(profile, func(_k: String) -> void: Gfx.apply_screen(get_tree(), profile["settings"]), false))

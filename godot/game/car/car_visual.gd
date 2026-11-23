@@ -65,6 +65,9 @@ func load_model() -> bool:
 		add_child(model)
 	else:
 		inst.remove_child(model)
+		model.owner = null
+		for d in model.find_children("*", "", true, false):
+			d.owner = null
 		add_child(model)
 		inst.free()
 	for w in WHEEL_KEYS:
@@ -80,6 +83,7 @@ func load_model() -> bool:
 		wn.reparent(steer, false)
 		wn.position = Vector3.ZERO
 		wheels.append({"steer": steer, "spin": wn, "front": w.begins_with("f"), "cx": c.x, "cz": c.z, "base_y": c.y})
+	_fix_materials(model)
 	steer_node = model.get_node_or_null("steer_wheel") as Node3D
 	if meta.has("steer_axis"):
 		var a: Array = meta["steer_axis"]
@@ -89,6 +93,33 @@ func load_model() -> bool:
 			_register_part(ch as Node3D)
 	_collect_meshes(model)
 	return true
+
+## Los materiales de GTA vienen en modo «mezcla» (transparente) aunque sean pintura, plástico o calcos con borde recortado: se dibujan mucho más caros
+## y se ordenan mal. Todo lo que no es vidrio ni luz pasa a «recorte» (opaco, con el borde de la textura). Se hace una sola vez por material.
+const GLASS_WORDS := ["glass", "vidrio", "window", "wind", "light", "lamp", "cristal", "transpar", "tint", "lente", "optica", "reflector", "farol", "steklo", "glow"]
+static var _fixed := {}
+static func _fix_materials(root: Node) -> void:
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mi as MeshInstance3D).mesh
+		if mesh == null:
+			continue
+		for s in mesh.get_surface_count():
+			var m := mesh.surface_get_material(s) as BaseMaterial3D
+			if m == null or _fixed.has(m):
+				continue
+			_fixed[m] = true
+			if m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
+				continue
+			var nm := m.resource_name.to_lower()
+			var glass := false
+			for w in GLASS_WORDS:
+				if nm.contains(w):
+					glass = true
+					break
+			if glass or m.albedo_color.a < 0.95:
+				continue
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+			m.alpha_scissor_threshold = 0.4
 
 func _register_part(n: Node3D) -> void:
 	var pname := String(n.name).substr(5)
@@ -144,8 +175,10 @@ func set_paint(col: Color) -> void:
 ## Igual que el demo del kit: posición, orientación (YXZ), altura de cada rueda con la suspensión, dirección y rodado
 func sync_from(p, dt: float, V) -> void:
 	_t += dt
-	position = Vector3(p.px, p.py, p.pz)
 	basis = Basis.from_euler(Vector3(p.pitch, p.yaw, p.roll), EULER_ORDER_YXZ)
+	# p.py es la altura del CENTRO DE GRAVEDAD; el origen del modelo está en el piso, comHeight más abajo en el marco del auto
+	# (antes se dibujaba el piso del modelo a la altura del centro de gravedad: los autos flotaban ~0,5 m)
+	position = Vector3(p.px, p.py, p.pz) - basis.y * V.comHeight
 	var base: float = V.comHeight + V.hardpointY - V.rideOffset
 	for i in 4:
 		var w = wheels[i]
@@ -269,6 +302,8 @@ func _dent(mi: MeshInstance3D, point: Vector3, dir: Vector3, rad: float, depth: 
 	for sd in surfaces:
 		var arr: Array = sd["arrays"]
 		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		if vs.size() > 45000:
+			continue
 		for k in vs.size():
 			var v := vs[k]
 			var d2 := v.distance_squared_to(lp)

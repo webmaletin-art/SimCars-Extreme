@@ -102,15 +102,15 @@ static func toggle(title: String, on: bool, on_change: Callable) -> HBoxContaine
 	return row
 
 ## Selector de opciones en fila: [A] [B] [C] con la elegida resaltada
-static func choice(title: String, options: Array, cur: int, on_change: Callable) -> HBoxContainer:
+static func choice(title: String, options: Array, cur: int, on_change: Callable, bw := 120) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 6 if bw < 110 else 10)
 	var l := label(title, 22, TXT)
-	l.custom_minimum_size = Vector2(300, 0)
+	l.custom_minimum_size = Vector2(250, 0)
 	row.add_child(l)
 	var btns: Array = []
 	for i in options.size():
-		var b := button(str(options[i]), Vector2(120, 48), 20, i == cur)
+		var b := button(str(options[i]), Vector2(bw, 46), 18 if bw < 110 else 20, i == cur)
 		btns.append(b)
 		b.pressed.connect(func() -> void:
 			for k in btns.size():

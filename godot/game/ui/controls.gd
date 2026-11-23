@@ -411,8 +411,14 @@ func update_inputs(dt: float) -> void:
 	shift_queue -= shift
 	_flash_up = maxf(0.0, _flash_up - dt)
 	_flash_dn = maxf(0.0, _flash_dn - dt)
-	queue_redraw()
+	# se redibuja sólo si cambió algo que se ve (antes: todos los cuadros). Con el auto quieto el HUD no gasta nada.
+	var sig := "%d|%d|%d|%d|%s|%d|%d|%d|%d|%d|%d" % [roundi(wheel_visual * 90.0), roundi(steer * 60.0), roundi(pedal_v * 40.0), roundi(speed_kmh), gear_text, roundi(rpm_frac * 50.0),
+		int(handbrake), int(_flash_up > 0.0) + 2 * int(_flash_dn > 0.0), _touch.size(), roundi(slider_target * 40.0), int(manual)]
+	if sig != _sig:
+		_sig = sig
+		queue_redraw()
 
+var _sig := ""
 var _key_e := false
 var _key_q := false
 
