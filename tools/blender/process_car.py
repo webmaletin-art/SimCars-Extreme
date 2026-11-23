@@ -115,8 +115,8 @@ def run(car_id, cars_dir, out_dir, lite=False):
     global WHEEL_TRIS, MAX_TEX
     R = dict(CARS[car_id])
     if lite:  # versión liviana para los autos estacionados / de fondo: ~12.000 triángulos, texturas de 256 px, sin piezas dañadas
-        WHEEL_TRIS, MAX_TEX = 450, 256
-        R["budget"] = 7000
+        WHEEL_TRIS, MAX_TEX = 2500, 512
+        R["budget"] = 30000
         R["heavy"] = list(R.get("heavy", [])) + [n for n in R.get("extra_heavy", [])]
     else:  # auto del jugador: TAL CUAL el original (sin reducir triángulos ni texturas, con su interior)
         WHEEL_TRIS, MAX_TEX = 0, 0

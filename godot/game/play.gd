@@ -16,10 +16,12 @@ const CarBuild := preload("res://game/data/car_build.gd")
 const CarVisual := preload("res://game/car/car_visual.gd")
 const Cockpit := preload("res://game/car/cockpit.gd")
 const LotWorld := preload("res://game/world/lot_world.gd")
+const DirtWorld := preload("res://game/world/dirt_world.gd")
 const Garage := preload("res://game/data/garage.gd")
 const Profile := preload("res://game/save/profile.gd")
 const OptionsPanel := preload("res://game/ui/options_panel.gd")
 const UI := preload("res://game/ui/ui_kit.gd")
+const TunePanel := preload("res://game/ui/tune_panel.gd")
 const Gfx := preload("res://game/ui/gfx.gd")
 const PerfProbe := preload("res://game/diag/perf_probe.gd")
 
@@ -47,6 +49,7 @@ var free_box: HBoxContainer
 var free_hint: Label
 var pause_panel: Control
 var car_id := ""
+var is_dirt := false
 var acc := 0.0
 var sim_t := 0.0
 var render_t := 0.0
@@ -58,10 +61,11 @@ var autotest := false
 var test_t := 0.0
 var shot_path := ""
 var shot_cam := -1
-var shot_wait := 3.0
+var shot_wait := -1.0
 var drive := true
 var dbg_cam := []
 var crash := false
+var hidecar := false
 var opt_script := ""
 var _vp_base: Viewport
 
@@ -81,6 +85,8 @@ func _ready() -> void:
 				dbg_cam.append(float(v))
 		elif a == "--perf": # corre el diagnóstico solo y escribe el informe (pruebas)
 			call_deferred("_auto_perf")
+		elif a == "--hidecar": # (depuración) oculta el auto y marca la cadera / el asiento (verde) y el pedal (rojo)
+			hidecar = true
 		elif a == "--crash":
 			crash = true
 		elif a == "--still":
@@ -96,7 +102,8 @@ func _S(k: String) -> Variant:
 	return (profile["settings"] as Dictionary)[k]
 
 func _build() -> void:
-	world = LotWorld.new()
+	is_dirt = String(profile.get("map", "lot")) == "dirt"
+	world = DirtWorld.new() if is_dirt else LotWorld.new()
 	add_child(world)
 	world.build({"parked": int(_S("parked")), "grass": float(_S("grass")), "trees": float(_S("trees")), "shadows": _S("shadows") != "off",
 		"backdrop": bool(_S("backdrop")), "cones": bool(_S("cones"))})
@@ -114,12 +121,30 @@ func _build() -> void:
 	_spawn_car()
 	_build_hud()
 	_apply_settings()
+	if hidecar:
+		for c in visual.model.get_children():
+			if c.name != "crew":
+				(c as Node3D).visible = false
+		var mk := func(pos: Vector3, col: Color, size: Vector3) -> void:
+			var mi := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = size
+			mi.mesh = bm
+			var m := StandardMaterial3D.new()
+			m.albedo_color = col
+			mi.material_override = m
+			mi.position = pos
+			visual.model.add_child(mi)
+		var cp: Object = cockpit
+		mk.call(Vector3(cp.xD, cp.hip_y - 0.14, cp.hip_z), Color(0, 1, 0), Vector3(0.45, 0.04, 0.5))
+		mk.call(Vector3(cp.xD + 0.1, cp.ped_y - 0.05, cp.ped_z), Color(1, 0, 0), Vector3(0.12, 0.1, 0.08))
+		mk.call(Vector3(cp.xD, 0.0, 0.0), Color(0.3, 0.3, 0.3), Vector3(1.2, 0.02, 3.0))
 	rig.set_preset(shot_cam if shot_cam >= 0 else int(profile["cam"]))
 	_update_camera_mode()
 
 # ───────────────────────── auto ─────────────────────────
 func _params() -> VehicleParams:
-	var d: Dictionary = CarBuild.build_params(Garage.vehicles()[car_id], {"upg": {}, "tune": {}, "tires": "street", "tiresOwned": ["street"]},
+	var d: Dictionary = CarBuild.build_params(Garage.vehicles()[car_id], TunePanel.state_for(profile, car_id),
 		{"abs": bool(_S("abs")), "tc": float(_S("tc")), "stab": float(_S("stab"))})
 	return VehicleParams.from_dict(d)
 
@@ -129,7 +154,8 @@ func _spawn_car() -> void:
 	car.phys.tc_free_spin = false
 	car.phys.manual = bool(_S("manual"))
 	car.solid = true # el lote tiene obstáculos: Car._keep_out consulta track.push()
-	car.place(START.x, START.z, 0.0)
+	var sp := _start_pose()
+	car.place(sp.x, sp.y, sp.z)
 	car.restart_history(0.0)
 	sim_t = 0.0
 	acc = 0.0
@@ -151,7 +177,7 @@ func _spawn_car() -> void:
 	audio = CarAudio.new()
 	audio.set_vehicle(car_id)
 	add_child(audio)
-	last_pos = Vector3(START.x, 0, START.z)
+	last_pos = Vector3(_start_pose().x, 0, _start_pose().y)
 	fx.reset()
 
 func _build_car_collider() -> void:
@@ -177,8 +203,29 @@ func _apply_pilot_adj() -> void:
 	var a: Dictionary = profile["pilot_adj"]
 	cockpit.adj = {"x": float(a["x"]), "y": float(a["y"]), "z": float(a["z"])}
 
+## (x, z, yaw) de la largada
+func _start_pose() -> Vector3:
+	if is_dirt:
+		return world.dt.start_pose()
+	return Vector3(START.x, START.z, 0.0)
+
+## Vuelve al camino en el punto más cercano, mirando en el sentido de marcha (sólo camino de tierra)
+func back_on_track() -> void:
+	if not is_dirt:
+		respawn(false)
+		return
+	var nr: Dictionary = world.dt.nearest(car.phys.px, car.phys.pz)
+	var q: Vector2 = world.dt.pts[nr["i"]]
+	var tg: Vector2 = nr["tan"]
+	car.place(q.x, q.y, atan2(tg.x, tg.y))
+	car.restart_history(0.0)
+	sim_t = 0.0
+	acc = 0.0
+	fx.reset()
+
 func respawn(repair := false) -> void:
-	car.place(START.x, START.z, 0.0)
+	var sp := _start_pose()
+	car.place(sp.x, sp.y, sp.z)
 	car.restart_history(0.0)
 	sim_t = 0.0
 	acc = 0.0
@@ -356,12 +403,16 @@ func _show_pause_main() -> void:
 			cam_panel.visible = true
 			_refresh_cam_panel()],
 		["AJUSTES", false, _show_pause_options],
+		["REGLAJE DEL AUTO", false, _show_tune],
 		["RENDIMIENTO (diagnóstico)", false, _show_perf],
 		["REPARAR EL AUTO", false, func() -> void:
 			visual.repair()
 			_toggle_pause()],
 		["VOLVER AL INICIO", false, func() -> void:
 			respawn(false)
+			_toggle_pause()],
+		["VOLVER AL CAMINO (aquí mismo)", false, func() -> void:
+			back_on_track()
 			_toggle_pause()],
 		["REINICIAR ESCENARIO", false, func() -> void:
 			_save_stats()
@@ -377,12 +428,37 @@ func _show_pause_main() -> void:
 		b.pressed.connect(it[2])
 		box.add_child(b)
 
+func _show_tune() -> void:
+	for c in pause_panel.get_children():
+		if c is not ColorRect:
+			c.queue_free()
+	var panel := UI.panel(Vector2(1020, 0), UI.BG, 18, 14.0)
+	panel.position = Vector2(40, 30)
+	pause_panel.add_child(panel)
+	var v := VBoxContainer.new()
+	panel.add_child(v)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 10)
+	v.add_child(top)
+	var bk := UI.button("◀ VOLVER", Vector2(170, 50), 20)
+	bk.pressed.connect(_show_pause_main)
+	top.add_child(bk)
+	top.add_child(UI.label("  REGLAJE · " + String(Garage.vehicles()[car_id]["name"]), 26, Color.WHITE))
+	var rs := UI.button("RESTABLECER", Vector2(210, 50), 18)
+	rs.pressed.connect(func() -> void:
+		(profile["tune"] as Dictionary).erase(car_id)
+		Profile.save_profile(profile)
+		_apply_settings()
+		_show_tune())
+	top.add_child(rs)
+	v.add_child(TunePanel.build(profile, car_id, func() -> void: _apply_settings()))
+
 func _show_pause_options() -> void:
 	for c in pause_panel.get_children():
 		if c is not ColorRect:
 			c.queue_free()
 	var panel := UI.panel(Vector2(980, 0), UI.BG, 18, 18.0)
-	panel.position = Vector2(150, 50)
+	panel.position = Vector2(40, 30)
 	pause_panel.add_child(panel)
 	var v := VBoxContainer.new()
 	panel.add_child(v)
@@ -511,9 +587,7 @@ func _apply_settings() -> void:
 	controls.manual = bool(S["manual"])
 	if car != null:
 		car.phys.manual = bool(S["manual"])
-		var d: Dictionary = CarBuild.build_params(Garage.vehicles()[car_id], {"upg": {}, "tune": {}, "tires": "street", "tiresOwned": ["street"]},
-			{"abs": bool(S["abs"]), "tc": float(S["tc"]), "stab": float(S["stab"])})
-		car.phys.V = VehicleParams.from_dict(d)
+		car.phys.V = _params()
 		car.phys.setup()
 	world.set_wind(float(S["wind"]))
 	AudioServer.set_bus_volume_db(0, linear_to_db(clampf(float(S["volume"]) / 100.0, 0.0001, 1.0)))
@@ -557,6 +631,7 @@ func _process(dt: float) -> void:
 			thr = 1.0
 			brk = 0.0
 			st = 0.0
+	st = _line_assist(st)
 	car.in_throttle = thr
 	car.in_brake = brk
 	car.in_steer = st
@@ -603,10 +678,29 @@ func _process(dt: float) -> void:
 	profile["stats"]["top_kmh"] = maxf(float(profile["stats"]["top_kmh"]), spd)
 	last_pos = cur
 	_update_labels(spd, p)
-	if autotest and shot_path != "" and not drive and test_t > shot_wait:
+	if autotest and shot_path != "" and not drive and test_t > (shot_wait if shot_wait > 0.0 else 3.0):
 		_finish_autotest(spd)
-	elif autotest and drive and test_t > 14.0:
+	elif autotest and drive and test_t > (shot_wait if shot_wait > 0.0 else 14.0):
 		_finish_autotest(spd)
+
+## Ayuda de trazada (camino de tierra): suma un volante virtual hacia un punto adelante del eje del camino; el jugador siempre manda (cuanto más gira él, menos ayuda)
+func _line_assist(st: float) -> float:
+	var k := float(_S("line")) / 100.0
+	if not is_dirt or k <= 0.0:
+		return st
+	var ph: Object = car.phys
+	var nr: Dictionary = world.dt.nearest(ph.px, ph.pz)
+	var spd: float = sqrt(ph.vx * ph.vx + ph.vz * ph.vz)
+	var tgt: Vector2 = world.dt.ahead(int(nr["i"]), 7.0 + spd * 0.5)
+	var dx: float = tgt.x - float(ph.px)
+	var dz: float = tgt.y - float(ph.pz)
+	var dl: float = maxf(0.5, sqrt(dx * dx + dz * dz))
+	var left: float = (dx * cos(ph.yaw) - dz * sin(ph.yaw)) / dl # + = el punto queda a la izquierda
+	var fwd: float = (dx * sin(ph.yaw) + dz * cos(ph.yaw)) / dl
+	if fwd < 0.0: # mirando para atrás: no se ayuda
+		return st
+	var assist := clampf(-left * 2.2, -1.0, 1.0)
+	return clampf(st + assist * k * 0.55 * (1.0 - absf(st)), -1.0, 1.0)
 
 func _handle_hits(imp: Dictionary, p) -> void:
 	if imp.is_empty():

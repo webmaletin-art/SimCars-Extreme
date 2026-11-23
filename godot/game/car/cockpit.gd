@@ -12,12 +12,12 @@ const CHARS := "res://game/models/characters/"
 
 ## Ajuste fino por auto (todo opcional): dz/dy/dx mueven al piloto (m), eye_dy sube/baja los ojos, hip_dy la cadera, wheel_r radio del aro
 const CABIN := {
-	"mclaren_f1": {"dy": -0.02, "wheel_r": 0.155, "rc": [-0.12, 0.30, -0.45]}, # asiento central: la cámara va del lado del acompañante
-	"mclaren_f1_gtr": {"rc": [-0.16, 0.46]},
-	"aventador_s": {"dy": -0.06, "dz": -0.05, "wheel_r": 0.165, "rc": [-0.2, 0.46]},
+	"mclaren_f1": {"dy": -0.02, "wheel_r": 0.155, "rc": [-0.12, 0.30, -0.45], "ped": [0.98, 0.27]}, # asiento central: la cámara va del lado del acompañante
+	"mclaren_f1_gtr": {"rc": [-0.16, 0.46], "ped": [0.95, 0.28]},
+	"aventador_s": {"dy": -0.06, "dz": -0.05, "wheel_r": 0.165, "rc": [-0.2, 0.46], "ped": [0.98, 0.27]},
 	"ranger_limited": {"dy": -0.04},
 	"rx3_savanna": {},
-	"cls63_amg": {},
+	"cls63_amg": {"hip": [-0.04, 0.60], "ped": [0.74, 0.30]}, # medido sobre el modelo: butaca, piso y pedales
 }
 
 var car: Node3D # CarVisual
@@ -34,6 +34,9 @@ var eY := 1.0
 var eZ := 0.0
 var hip_y := 0.6
 var floor_y := 0.1
+var hip_z := 0.0
+var ped_z := 0.6
+var ped_y := 0.3
 var knob := Vector3.ZERO
 var hb_pos := Vector3.ZERO
 var sh_i := 0 # mano que cambia: 0 derecha · 1 izquierda (autos con el volante a la derecha)
@@ -67,7 +70,15 @@ func _measure() -> void:
 	eZ = S.z - 0.42 + float(o.get("eye_dz", 0.0))
 	eY = S.y + 0.27 + float(o.get("eye_dy", 0.0))
 	hip_y = S.y - 0.36 + float(o.get("hip_dy", 0.0))
-	floor_y = clampf(S.y - 0.80, 0.08, 0.5)
+	floor_y = clampf(S.y - 0.74, 0.08, 0.6)
+	# butaca y pedales: medidos en el modelo si el auto los tiene en CABIN («hip»: [z, y] de la cadera · «ped»: [z, y] de la almohadilla del pedal); si no, por la geometría típica
+	var hp: Array = o.get("hip", [S.z - 0.53, S.y - 0.36])
+	hip_z = float(hp[0])
+	hip_y = float(hp[1]) if o.has("hip") else hip_y
+	var pd: Array = o.get("ped", [S.z + 0.38, floor_y + 0.16])
+	ped_z = float(pd[0])
+	ped_y = float(pd[1])
+	eZ = hip_z + 0.11
 	var rhd := String(meta.get("drive_side", "L")) == "R"
 	sh_i = 1 if rhd else 0
 	var sgn := 1.0 if xD >= 0.0 else -1.0
@@ -128,6 +139,9 @@ func update(dt: float, p: CarSnapshot, hb: bool) -> void:
 	var hy: float = hip_y + float(adj["y"])
 	var ez: float = eZ + float(adj["z"])
 	var ey: float = eY + float(adj["y"])
+	var hz: float = hip_z + float(adj["z"])
+	var pz: float = ped_z + float(adj["z"])
+	var py: float = ped_y + float(adj["y"])
 	var sp := clampf(absf(p.vLong) / 30.0, 0.0, 1.0)
 	var jit := 0.0016 * sp
 	var jy := _jit_noise(_time, 43.0, 27.0)
@@ -169,10 +183,10 @@ func update(dt: float, p: CarSnapshot, hb: bool) -> void:
 	var look := clampf(p.steerAngle * 0.45 + p.yawRate * 0.06, -0.35, 0.35) * (1.0 - maxf(sw, hw2) * 0.3)
 	look_yaw = look
 	var brake_nod := clampf(-p.aLong * 0.004, -0.02, 0.05)
-	rig.pose({"hips": Vector3(x0 + b.x * 0.4 + jx * jit * 0.3, hy + b.y * 0.3 + jy * jit * 0.5 + 0.003 * sin(_time * 1.6), ez - 0.11 + b.z * 0.3),
+	rig.pose({"hips": Vector3(x0 + b.x * 0.4 + jx * jit * 0.3, hy + b.y * 0.3 + jy * jit * 0.5 + 0.003 * sin(_time * 1.6), hz + b.z * 0.3),
 		"head": Vector3(x0 + h.x, ey - 0.07 + h.y + brake_nod, ez - 0.09 + h.z), "roll": h.x * 1.2 - b.x * 0.5, "look": look, "look_y": -0.1 - brake_nod * 4.0,
 		"hands": hands, "grip": 1.2 + 0.45 * maxf(sw, hw2),
-		"feet": [{"side": "Left", "pos": Vector3(x0 + 0.13, floor_y + adj["y"] + 0.13, ez + 0.60)}, {"side": "Right", "pos": mo.right_foot(x0, floor_y + adj["y"], ez)}]})
+		"feet": [{"side": "Left", "pos": Vector3(x0 + 0.13, py, pz - 0.02)}, {"side": "Right", "pos": mo.right_foot(x0, py - 0.13, pz - 0.62)}]})
 
 ## Para CameraRig._inside: posición / mirada en el marco del auto
 func camera_local(m: String, p: CarSnapshot, time: float, rough: float) -> Dictionary:

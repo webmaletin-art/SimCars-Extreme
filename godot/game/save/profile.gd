@@ -11,14 +11,17 @@ static func defaults() -> Dictionary:
 		"car": "cls63_amg",
 		"char": "aiden",
 		"paint": {},
-		"pilot_height": 1.76,
+		"map": "lot",
+		"tune": {}, # reglaje manual por auto: id → {clave: valor}
+		"pilot_height": 1.86,
 		"pilot_adj": {"x": 0.0, "y": 0.0, "z": 0.0},
 		"cam": 1, # índice de CameraRig.CAMERAS
 		"cam_adj": {}, # por cámara: {dist, height, side, fov}
+		"opt_page": 0,
 		"settings": {
 			"shadows": "media", "res_scale": 1.0, "fps_cap": 60, "show_fps": false, "msaa": 0,
 			"parked": 7, "grass": 1.0, "trees": 1.0, "particles": 1.0, "wind": 0.6,
-			"steer_mode": "wheel", "wheel_real": 0, "gyro": false, "manual": false, "abs": true, "tc": 50.0, "stab": 30.0,
+			"sim": "mid", "line": 25.0, "steer_mode": "wheel", "wheel_real": 0, "gyro": false, "manual": false, "abs": true, "tc": 50.0, "stab": 30.0,
 			"volume": 80.0, "units_mph": false, "backdrop": true, "cones": true,
 			"screen_res": "NATIVA", "vsync": true, "particles_on": true, "view_dist": 650, "detail_dist": 1.0, "shadow_dist": 55.0,
 			"player_lite": false, "pilot_outside": true, "hud_fps": false,

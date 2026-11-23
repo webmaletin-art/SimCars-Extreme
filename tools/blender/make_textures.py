@@ -581,6 +581,38 @@ def build_autumn(rnd, bm):
     blobs = [((0, 0, 4.3), 1.7), ((-1.5, 0, 3.9), 1.2), ((1.5, 0, 4.2), 1.3), ((0, 0, 5.6), 1.1)]
     return cols, {"blobs": blobs, "n": 420, "size": 0.25}, None
 
+def recolor(builder, cols, scale_blobs=1.0):
+    def b(rnd, bm):
+        c, bl, t = builder(rnd, bm)
+        return cols, bl, t
+    return b
+
+def tex_valla(path, W=3.0, H=1.2, res=(768, 308)):
+    """cerco de madera (tramo de 3 m que se repite): dos tablones horizontales y un poste; fondo transparente"""
+    sc = reset(res, transparent=True, samples=40)
+    sky_world(0.9)
+    sun((0.9, 0.3, 0.8), 3.0)
+    wm = bark_material((0.30, 0.19, 0.10))
+    def box(c, size):
+        me = bpy.data.meshes.new("b")
+        bm = bmesh.new()
+        bmesh.ops.create_cube(bm, size=1.0, matrix=Matrix.Translation(c) @ Matrix.Diagonal((size[0], size[1], size[2], 1)))
+        bm.to_mesh(me); bm.free()
+        for p_ in me.polygons: p_.use_smooth = False
+        o = bpy.data.objects.new("b", me); bpy.context.collection.objects.link(o); o.data.materials.append(wm)
+    box((0.3, 0, 0.55), (0.14, 0.14, 1.1))            # poste
+    box((0.3, 0, 1.12), (0.20, 0.16, 0.05))           # tapa
+    box((W / 2, -0.08, 0.86), (W, 0.05, 0.20))        # tablón de arriba
+    box((W / 2, -0.08, 0.50), (W, 0.05, 0.20))        # tablón del medio
+    box((W / 2, -0.08, 0.16), (W, 0.05, 0.14))        # tablón de abajo
+    camera_ortho((W / 2, -10, H / 2 - 0.0), (math.pi / 2, 0, 0), W)
+    cam = sc.camera.data
+    cam.sensor_fit = "HORIZONTAL"
+    cam.ortho_scale = W
+    sc.render.resolution_x, sc.render.resolution_y = res
+    sc.camera.location = (W / 2, -10, H / 2 + 0.0)
+    render(path)
+
 def render_bush(path, seed, cols, size=(512, 384), spread=1.0, n=380, flowers=None):
     rnd = random.Random(seed)
     sc = reset(size, transparent=True, samples=40)
@@ -848,6 +880,13 @@ def main():
                               tex_fachada(P("fachada_c.png"), 3, (0.76, 0.70, 0.62), (0.12, 0.2, 0.28), 7, 7, shop=True), tex_fachada(P("fachada_d.png"), 4, (0.58, 0.40, 0.34), (0.1, 0.16, 0.2), 6, 8)],
         "arboles": lambda: [render_tree(P("arbol_redondo.png"), build_round, (512, 768), 8.0, 1), render_tree(P("arbol_cipres.png"), build_conifer, (384, 768), 8.0, 2),
                             render_tree(P("arbol_alamo.png"), build_poplar, (320, 768), 8.0, 3), render_tree(P("arbol_otono.png"), build_autumn, (512, 640), 7.0, 4)],
+        "arboles2": lambda: [render_tree(P("arbol_amarillo.png"), recolor(build_round, [(0.85, 0.72, 0.08), (0.95, 0.82, 0.14), (0.75, 0.6, 0.05)]), (512, 768), 8.0, 11),
+                             render_tree(P("arbol_rojo.png"), recolor(build_round, [(0.62, 0.07, 0.05), (0.78, 0.12, 0.06), (0.5, 0.05, 0.05)]), (512, 768), 8.0, 12),
+                             render_tree(P("arbol_rosa.png"), recolor(build_round, [(0.95, 0.55, 0.7), (0.98, 0.7, 0.8), (0.9, 0.42, 0.62)]), (512, 768), 8.0, 13),
+                             render_tree(P("arbol_violeta.png"), recolor(build_autumn, [(0.45, 0.2, 0.7), (0.6, 0.35, 0.82), (0.35, 0.12, 0.6)]), (512, 640), 7.0, 14),
+                             render_tree(P("arbol_cipres_azul.png"), recolor(build_conifer, [(0.1, 0.3, 0.38), (0.15, 0.4, 0.48), (0.2, 0.48, 0.55)]), (384, 768), 8.0, 15),
+                             render_tree(P("arbol_alamo_amarillo.png"), recolor(build_poplar, [(0.9, 0.75, 0.1), (0.95, 0.85, 0.2)]), (320, 768), 8.0, 16)],
+        "valla": lambda: tex_valla(P("valla.png")),
         "arbustos": lambda: [render_bush(P("arbusto_verde.png"), 5, [(0.10, 0.30, 0.07), (0.16, 0.40, 0.09), (0.2, 0.46, 0.12)]),
                              render_bush(P("arbusto_flores_rosa.png"), 6, [(0.10, 0.30, 0.07), (0.16, 0.40, 0.09)], flowers=(0.9, 0.25, 0.45)),
                              render_bush(P("arbusto_flores_amarillo.png"), 7, [(0.12, 0.32, 0.07), (0.18, 0.42, 0.09)], flowers=(0.98, 0.82, 0.12))],

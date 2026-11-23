@@ -49,6 +49,7 @@ func drag(rel: Vector2) -> void:
 	if mode() != "custom":
 		return
 	custom_yaw_off -= rel.x * 0.009
+	custom_yaw_abs -= rel.x * 0.009
 	custom_elev = clampf(custom_elev + rel.y * 0.006, -0.15, 1.35)
 
 func zoom(f: float) -> void:
@@ -58,6 +59,7 @@ func zoom(f: float) -> void:
 
 # cámara libre
 var custom_yaw_off := 0.0
+var custom_yaw_abs := 0.0 # ángulo de la cámara libre en el MUNDO: no se mueve cuando el auto gira (volante y pedales no tocan la cámara)
 var custom_elev := 0.28
 var custom_dist := 7.5
 var custom_pan_f := 0.0
@@ -186,7 +188,9 @@ func _loose(p: CarSnapshot) -> bool:
 	return false
 
 func _custom(dt: float, p: CarSnapshot, c: Dictionary) -> void:
-	var ang := p.yaw + PI + custom_yaw_off
+	if not ready:
+		custom_yaw_abs = p.yaw + PI + custom_yaw_off
+	var ang := custom_yaw_abs
 	var cos_e := cos(custom_elev)
 	var sin_e := sin(custom_elev)
 	var cd := maxf(1.5, custom_dist + adj_of("dist"))

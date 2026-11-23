@@ -73,7 +73,7 @@ func _main() -> void:
 	sp.custom_minimum_size = Vector2(0, 6)
 	left.add_child(sp)
 	var play := UI.button("JUGAR", Vector2(330, 66), 32, true)
-	play.pressed.connect(func() -> void: play_pressed.emit())
+	play.pressed.connect(_maps)
 	left.add_child(play)
 	var g := UI.button("GARAJE", Vector2(330, 52), 24)
 	g.pressed.connect(_garage)
@@ -110,6 +110,33 @@ func _main() -> void:
 	cv.add_child(UI.label("Piloto: %s" % pn, 20, UI.DIM))
 	cv.add_child(UI.label("Recorrido: %.1f km · Velocidad máx.: %.0f km/h" % [float(st["km"]), float(st["top_kmh"])], 18, UI.DIM))
 	cv.add_child(UI.label(VERSION_TXT, 16, Color(0.4, 0.5, 0.6)))
+
+# ───────────────────────── mapa ─────────────────────────
+func _maps() -> void:
+	_reset()
+	_box.add_child(_back_button(_main))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	row.position = Vector2(150, 110)
+	_box.add_child(row)
+	for m in Garage.MAPS:
+		var card := UI.panel(Vector2(480, 330), UI.BG, 18, 16.0)
+		row.add_child(card)
+		var cv := VBoxContainer.new()
+		cv.add_theme_constant_override("separation", 8)
+		card.add_child(cv)
+		cv.add_child(UI.label(String(m["name"]), 30, Color.WHITE))
+		var d := UI.label(String(m["desc"]), 18, UI.DIM)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(440, 150)
+		cv.add_child(d)
+		var go := UI.button("JUGAR AQUÍ", Vector2(300, 64), 26, true)
+		var mid: String = m["id"]
+		go.pressed.connect(func() -> void:
+			profile["map"] = mid
+			Profile.save_profile(profile)
+			play_pressed.emit())
+		cv.add_child(go)
 
 # ───────────────────────── garaje ─────────────────────────
 func _garage() -> void:
@@ -169,40 +196,26 @@ func _garage() -> void:
 			Profile.save_profile(profile)
 			_garage())
 		sw.add_child(b)
-	var pick := UI.button("ELEGIR ESTE AUTO", Vector2(300, 52), 22, true)
+	var nav := HBoxContainer.new()
+	nav.add_theme_constant_override("separation", 10)
+	v.add_child(nav)
+	var prev := UI.button("◀", Vector2(84, 56), 30)
+	prev.pressed.connect(func() -> void:
+		_car_i = (_car_i + _cars.size() - 1) % _cars.size()
+		_garage())
+	nav.add_child(prev)
+	var pick := UI.button("ELEGIR ESTE AUTO", Vector2(300, 56), 22, true)
+	pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pick.pressed.connect(func() -> void:
 		profile["car"] = id
 		Profile.save_profile(profile)
 		_main())
-	v.add_child(pick)
-	var prev := UI.button("◀", Vector2(84, 84), 40)
-	prev.anchor_left = 1.0
-	prev.anchor_right = 1.0
-	prev.anchor_top = 1.0
-	prev.anchor_bottom = 1.0
-	prev.offset_left = -204
-	prev.offset_top = -110
-	prev.offset_right = -120
-	prev.offset_bottom = -26
-	prev.pressed.connect(func() -> void:
-		_car_i = (_car_i + _cars.size() - 1) % _cars.size()
-		_garage())
-	_box.add_child(prev)
-	var nxt := UI.button("▶", Vector2(84, 84), 40)
-	nxt.anchor_left = 1.0
-	nxt.anchor_right = 1.0
-	nxt.anchor_top = 0.5
-	nxt.anchor_bottom = 0.5
-	nxt.anchor_top = 1.0
-	nxt.anchor_bottom = 1.0
-	nxt.offset_left = -108
-	nxt.offset_top = -110
-	nxt.offset_right = -24
-	nxt.offset_bottom = -26
+	nav.add_child(pick)
+	var nxt := UI.button("▶", Vector2(84, 56), 30)
 	nxt.pressed.connect(func() -> void:
 		_car_i = (_car_i + 1) % _cars.size()
 		_garage())
-	_box.add_child(nxt)
+	nav.add_child(nxt)
 
 # ───────────────────────── piloto ─────────────────────────
 func _char() -> void:
@@ -226,27 +239,26 @@ func _char() -> void:
 	d.custom_minimum_size = Vector2(440, 0)
 	v.add_child(d)
 	v.add_child(UI.label("Sólo un piloto por auto (el acompañante llega más adelante).", 17, Color(0.5, 0.6, 0.7)))
-	var pick := UI.button("ELEGIR ESTE PILOTO", Vector2(300, 60), 24, true)
+	var nav := HBoxContainer.new()
+	nav.add_theme_constant_override("separation", 10)
+	v.add_child(nav)
+	var prev := UI.button("◀", Vector2(84, 56), 30)
+	prev.pressed.connect(func() -> void:
+		_char_i = (_char_i + _chars.size() - 1) % _chars.size()
+		_char())
+	nav.add_child(prev)
+	var pick := UI.button("ELEGIR", Vector2(240, 56), 22, true)
+	pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pick.pressed.connect(func() -> void:
 		profile["char"] = c["id"]
 		Profile.save_profile(profile)
 		_main())
-	v.add_child(pick)
-	for dd in [[-1, "◀", -204.0, 1], [1, "▶", -108.0, 1]]:
-		var b := UI.button(String(dd[1]), Vector2(84, 84), 40)
-		b.anchor_left = float(dd[3])
-		b.anchor_right = float(dd[3])
-		b.anchor_top = 1.0
-		b.anchor_bottom = 1.0
-		b.offset_left = float(dd[2])
-		b.offset_right = float(dd[2]) + 84
-		b.offset_top = -110
-		b.offset_bottom = -26
-		var dir: int = dd[0]
-		b.pressed.connect(func() -> void:
-			_char_i = (_char_i + dir + _chars.size()) % _chars.size()
-			_char())
-		_box.add_child(b)
+	nav.add_child(pick)
+	var nxt := UI.button("▶", Vector2(84, 56), 30)
+	nxt.pressed.connect(func() -> void:
+		_char_i = (_char_i + 1) % _chars.size()
+		_char())
+	nav.add_child(nxt)
 
 # ───────────────────────── ajustes ─────────────────────────
 func _options() -> void:
@@ -254,7 +266,7 @@ func _options() -> void:
 	_box.add_child(_back_button(_main))
 	var panel := UI.panel(Vector2(980, 0), UI.BG, 18, 18.0)
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(150, 90)
+	panel.position = Vector2(40, 70)
 	_box.add_child(panel)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)

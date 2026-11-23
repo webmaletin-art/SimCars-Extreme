@@ -58,3 +58,8 @@ const PAINTS := [
 
 static func paint_of(profile: Dictionary, id: String) -> String:
 	return String((profile.get("paint", {}) as Dictionary).get(id, ""))
+
+const MAPS := [
+	{"id": "lot", "name": "ESTACIONAMIENTO DE PRUEBAS", "desc": "Lomadas, rampas, tierra con piedras, conos que vuelan, postes que se rompen y autos estacionados. Para probar suspensión, golpes y derrapes."},
+	{"id": "dirt", "name": "CAMINO DE TIERRA", "desc": "Circuito cerrado de tierra, sin rivales, con cercos de madera a los costados y bosque que tapa la vista. Para dar vueltas y sentir cómo se agarra cada auto en tierra."},
+]

@@ -50,6 +50,10 @@ def run(name, src_dir, out_dir):
                 n.inputs["Base Color"].default_value = (0, 0, 0, 1)
                 n.inputs["Emission Color"].default_value = (0.15, 0.65, 1.0, 1)
                 n.inputs["Emission Strength"].default_value = 2.5
+            elif "Scalp" in m.name and not m.name.endswith(".001"):
+                # el cuero cabelludo del degradé: color de piel un poco más oscuro (si no, se ve una mancha clara con borde duro al lado del pelo)
+                c = n.inputs["Base Color"].default_value
+                n.inputs["Base Color"].default_value = (c[0] * 0.62, c[1] * 0.58, c[2] * 0.56, 1)
             elif m.name.startswith("traje_bota"):
                 n.inputs["Base Color"].default_value = (0.03, 0.032, 0.04, 1)
     # aplicar transformaciones (esqueleto en metros)

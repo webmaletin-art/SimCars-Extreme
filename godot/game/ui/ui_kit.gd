@@ -105,8 +105,8 @@ static func toggle(title: String, on: bool, on_change: Callable) -> HBoxContaine
 static func choice(title: String, options: Array, cur: int, on_change: Callable, bw := 120) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6 if bw < 110 else 10)
-	var l := label(title, 22, TXT)
-	l.custom_minimum_size = Vector2(250, 0)
+	var l := label(title, 20, TXT)
+	l.custom_minimum_size = Vector2(230, 0)
 	row.add_child(l)
 	var btns: Array = []
 	for i in options.size():

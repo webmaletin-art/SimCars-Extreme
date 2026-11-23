@@ -41,11 +41,11 @@
   "rolling": 0.015,
   "surfGrip": {
    "asphalt": 1,
-   "dirt": 0.62,
-   "shoulder": 0.72,
-   "grass": 0.45,
+   "dirt": 0.5,
+   "shoulder": 0.6,
+   "grass": 0.38,
    "outside": 0.4,
-   "mud": 0.35
+   "mud": 0.26
   },
   "peakTorque": 650,
   "idleRpm": 900,
@@ -160,11 +160,11 @@
   "rolling": 0.014,
   "surfGrip": {
    "asphalt": 1,
-   "dirt": 0.62,
-   "shoulder": 0.72,
-   "grass": 0.45,
+   "dirt": 0.42,
+   "shoulder": 0.54,
+   "grass": 0.34,
    "outside": 0.4,
-   "mud": 0.35
+   "mud": 0.22
   },
   "peakTorque": 640,
   "idleRpm": 1000,
@@ -279,11 +279,11 @@
   "rolling": 0.015,
   "surfGrip": {
    "asphalt": 1,
-   "dirt": 0.62,
-   "shoulder": 0.72,
-   "grass": 0.45,
+   "dirt": 0.52,
+   "shoulder": 0.62,
+   "grass": 0.4,
    "outside": 0.4,
-   "mud": 0.35
+   "mud": 0.28
   },
   "peakTorque": 690,
   "idleRpm": 900,
@@ -401,12 +401,12 @@
   "tireFalloff": 1.35,
   "rolling": 0.02,
   "surfGrip": {
-   "asphalt": 0.9,
-   "dirt": 0.8,
-   "shoulder": 0.78,
-   "grass": 0.55,
-   "outside": 0.42,
-   "mud": 0.5
+   "asphalt": 1,
+   "dirt": 0.84,
+   "shoulder": 0.8,
+   "grass": 0.62,
+   "outside": 0.4,
+   "mud": 0.52
   },
   "peakTorque": 600,
   "idleRpm": 750,
@@ -524,10 +524,10 @@
   "surfGrip": {
    "asphalt": 1,
    "dirt": 0.62,
-   "shoulder": 0.72,
-   "grass": 0.45,
+   "shoulder": 0.7,
+   "grass": 0.46,
    "outside": 0.4,
-   "mud": 0.35
+   "mud": 0.32
   },
   "peakTorque": 178,
   "idleRpm": 900,
@@ -641,11 +641,11 @@
   "rolling": 0.015,
   "surfGrip": {
    "asphalt": 1,
-   "dirt": 0.62,
-   "shoulder": 0.72,
-   "grass": 0.45,
+   "dirt": 0.58,
+   "shoulder": 0.66,
+   "grass": 0.42,
    "outside": 0.4,
-   "mud": 0.35
+   "mud": 0.3
   },
   "peakTorque": 720,
   "idleRpm": 750,

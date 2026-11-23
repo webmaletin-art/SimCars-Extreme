@@ -8,6 +8,13 @@ G = os.path.join(ROOT, 'godot', 'game')
 base = json.load(open(os.path.join(ROOT, 'tools', 'kit', 'vehicles_base.json')))
 
 # datos reales (fuentes: fichas de fábrica) — torque en N·m del motor, potencia en kW, relaciones de la caja y del diferencial
+## Agarre relativo al del asfalto en tierra / banquina / pasto / barro. Valores razonados con el tipo de goma y tracción de cada auto
+## (la tierra compacta da ~50-60 % del agarre del asfalto con gomas de calle; una pick-up con gomas todo terreno y 4x4 conserva ~80 %; los slicks de competición son lo peor)
+SURF = {
+    "mclaren_f1": (0.50, 0.60, 0.38, 0.26), "mclaren_f1_gtr": (0.42, 0.54, 0.34, 0.22), "aventador_s": (0.52, 0.62, 0.40, 0.28),
+    "ranger_limited": (0.84, 0.80, 0.62, 0.52), "rx3_savanna": (0.62, 0.70, 0.46, 0.32), "cls63_amg": (0.58, 0.66, 0.42, 0.30),
+}
+
 SPEC = {
     "mclaren_f1": dict(base="gt", mass=1140, wf=0.42, com=0.46, torque=650, idle=900, maxrpm=7500, launch=3600,
         curve=[[0, .42], [900, .62], [2500, .86], [4000, 1], [7000, 1], [7500, .93], [8000, .6]],
@@ -85,6 +92,8 @@ def main():
         v["vGov"] = S["gov"]
         v["engineBrake"] = round(S["torque"] * 0.2)
         v["powerScale"] = S.get("ps", 1)
+        d_, sh_, g_, m_ = SURF[cid]
+        v["surfGrip"] = {"asphalt": 1, "dirt": d_, "shoulder": sh_, "grass": g_, "outside": 0.4, "mud": m_}
         if "clutch" in S:
             v["clutchTime"] = S["clutch"]
         for k in ("aeroBaseF", "aeroBaseR"):

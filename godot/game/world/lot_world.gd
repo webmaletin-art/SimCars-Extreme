@@ -118,6 +118,16 @@ func build(p_opts := {}) -> void:
 	props.name = "props"
 	add_child(props)
 	_build_environment()
+	_build_scene()
+	car_body = AnimatableBody3D.new()
+	car_body.name = "car_body"
+	car_body.collision_layer = 2
+	car_body.collision_mask = 0
+	car_body.sync_to_physics = true
+	add_child(car_body)
+
+## El escenario del estacionamiento (DirtWorld lo reemplaza por el del camino de tierra)
+func _build_scene() -> void:
 	_build_ground()
 	_build_features()
 	_build_walls()
@@ -130,12 +140,6 @@ func build(p_opts := {}) -> void:
 	_build_signs()
 	if opts["backdrop"]:
 		_build_backdrop()
-	car_body = AnimatableBody3D.new()
-	car_body.name = "car_body"
-	car_body.collision_layer = 2
-	car_body.collision_mask = 0
-	car_body.sync_to_physics = true
-	add_child(car_body)
 
 func _build_environment() -> void:
 	var env := Environment.new()

@@ -79,7 +79,7 @@ func load_model() -> bool:
 		var steer := Node3D.new()
 		steer.name = "steer_" + w
 		model.add_child(steer)
-		steer.position = Vector3(c.x, 0.0, c.z)
+		steer.position = Vector3(c.x, c.y, c.z) # (a la altura del centro de la rueda: los autos que no se sincronizan —estacionados, sala del menú— no se hunden)
 		wn.reparent(steer, false)
 		wn.position = Vector3.ZERO
 		wheels.append({"steer": steer, "spin": wn, "front": w.begins_with("f"), "cx": c.x, "cz": c.z, "base_y": c.y})
