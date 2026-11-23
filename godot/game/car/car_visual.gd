@@ -93,7 +93,253 @@ func load_model() -> bool:
 		if ch.name.begins_with("part_"):
 			_register_part(ch as Node3D)
 	_collect_meshes(model)
+	_hide_internals()
+	_merge_static()
 	return true
+
+# ───────────────────────── optimización que no cambia lo que se ve ─────────────────────────
+## Piezas internas que no se ven con el auto entero: el motor (sólo con el capó abierto o caído) y el piso / escape (sólo si el auto vuelca o salta muy inclinado).
+## Se listan a mano por auto porque el nombre solo no alcanza (en el McLaren F1 «chassis» es la carrocería entera).
+const INTERNALS := {
+	"cls63_amg": {"engine": ["engined"], "under": ["chassis", "exhaust_ok"]},
+	"rx3_savanna": {"engine": [], "under": ["undercarriage"]},
+}
+var _engine_nodes: Array = []
+var _under_nodes: Array = []
+var _under_shown := false
+
+func _hide_internals() -> void:
+	var spec: Dictionary = INTERNALS.get(id, {})
+	if spec.is_empty():
+		return
+	for nm in spec["engine"]:
+		for n in model.find_children(String(nm), "MeshInstance3D", true, false):
+			_engine_nodes.append(n)
+	for nm in spec["under"]:
+		for n in model.find_children(String(nm), "MeshInstance3D", true, false):
+			_under_nodes.append(n)
+	if parts.has("bonnet") or not _engine_nodes.is_empty():
+		_refresh_engine()
+	for n in _under_nodes:
+		(n as Node3D).visible = false
+
+func _refresh_engine() -> void:
+	var open := not parts.has("bonnet") or int((parts["bonnet"] as Dictionary)["state"]) >= 2
+	for n in _engine_nodes:
+		if is_instance_valid(n):
+			(n as Node3D).visible = open
+
+func _show_under(on: bool) -> void:
+	if on == _under_shown:
+		return
+	_under_shown = on
+	for n in _under_nodes:
+		if is_instance_valid(n):
+			(n as Node3D).visible = on
+
+static var _merge_cache := {}
+static var merge_enabled := true # (las pruebas lo apagan para comparar)
+
+## Une las mallas FIJAS y opacas de la carrocería (interior, luces apagadas, cromados, asientos...) en una sola por material: el auto pasa de ~140 dibujos a ~60.
+## No se tocan: la carrocería principal (la que se abolla), las piezas que se dañan, ruedas, volante, vidrios y lo transparente. Mismo aspecto exacto.
+func _merge_static() -> void:
+	if not merge_enabled:
+		return
+	var victims: Array = []
+	var shell: Dictionary = {} # el mesh más grande de cada padre es la carrocería: se queda
+	for e in _meshes:
+		var mi: MeshInstance3D = e["mi"]
+		if mi == null or mi.mesh == null:
+			continue
+		var par := mi.get_parent()
+		if not shell.has(par) or mi.mesh.get_aabb().get_volume() > (shell[par] as MeshInstance3D).mesh.get_aabb().get_volume():
+			shell[par] = mi
+	for e in _meshes:
+		var mi: MeshInstance3D = e["mi"]
+		if mi == null or String(e["part"]) != "" or not (mi.mesh is ArrayMesh) or not mi.visible:
+			continue
+		if shell.get(mi.get_parent()) == mi or String(mi.name) == "body" or _engine_nodes.has(mi) or _under_nodes.has(mi):
+			continue
+		if mi.skin != null or mi.mesh.get_blend_shape_count() > 0 or mi.material_override != null:
+			continue
+		var skip := false
+		var p: Node = mi.get_parent()
+		while p != null and p != model:
+			var pn := String(p.name)
+			if pn.begins_with("wheel_") or pn.begins_with("steer") or pn.begins_with("part_"):
+				skip = true
+				break
+			p = p.get_parent()
+		if skip:
+			continue
+		var ok := true
+		for si in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(si)
+			if mi.get_surface_override_material(si) != null or (m != null and not (m is BaseMaterial3D)):
+				ok = false
+				break
+			if m != null and (m as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED and (m as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+				ok = false
+				break
+		if ok:
+			victims.append(mi)
+	if victims.size() < 3:
+		return
+	var by_parent := {}
+	for mi in victims:
+		var par: Node = (mi as Node).get_parent()
+		if not by_parent.has(par):
+			by_parent[par] = []
+		by_parent[par].append(mi)
+	for par in by_parent:
+		var list: Array = by_parent[par]
+		var key := id + ("_lite" if lite else "") + "|" + str(model.get_path_to(par)) + "|" + ",".join(PackedStringArray(list.map(func(m): return str(par.get_path_to(m)))))
+		var merged_mesh: ArrayMesh = _merge_cache.get(key)
+		if merged_mesh == null:
+			merged_mesh = _build_merged(list, par)
+			_merge_cache[key] = merged_mesh
+		var mm := MeshInstance3D.new()
+		mm.name = "static_merged"
+		mm.mesh = merged_mesh
+		par.add_child(mm)
+		for mi in list:
+			for i in range(_meshes.size() - 1, -1, -1):
+				if _meshes[i]["mi"] == mi:
+					_meshes.remove_at(i)
+			par.remove_child(mi)
+			mi.free()
+		_meshes.append({"mi": mm, "part": "", "nodent": true})
+
+func _rel_xf(mi: Node3D, par: Node) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	var n: Node = mi
+	while n != par and n != null:
+		t = (n as Node3D).transform * t
+		n = n.get_parent()
+	return t
+
+func _build_merged(list: Array, par: Node) -> ArrayMesh:
+	var groups := {} # material → [arrays...]
+	var order: Array = []
+	for mi in list:
+		var T := _rel_xf(mi, par)
+		var nb := T.basis.inverse().transposed()
+		var flip := T.basis.determinant() < 0.0
+		for si in mi.mesh.get_surface_count():
+			if mi.mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
+				continue
+			var a: Array = mi.mesh.surface_get_arrays(si)
+			var vs: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+			if vs.is_empty():
+				continue
+			var mat: Material = mi.mesh.surface_get_material(si)
+			var nv := vs.size()
+			var out_v := PackedVector3Array()
+			out_v.resize(nv)
+			for k in nv:
+				out_v[k] = T * vs[k]
+			var out_n := PackedVector3Array()
+			if a[Mesh.ARRAY_NORMAL] != null:
+				var ns: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+				out_n.resize(nv)
+				for k in nv:
+					out_n[k] = (nb * ns[k]).normalized()
+			var out_t := PackedFloat32Array()
+			if a[Mesh.ARRAY_TANGENT] != null:
+				var ts: PackedFloat32Array = a[Mesh.ARRAY_TANGENT]
+				out_t.resize(ts.size())
+				for k in nv:
+					var tv := (T.basis * Vector3(ts[k * 4], ts[k * 4 + 1], ts[k * 4 + 2])).normalized()
+					out_t[k * 4] = tv.x
+					out_t[k * 4 + 1] = tv.y
+					out_t[k * 4 + 2] = tv.z
+					out_t[k * 4 + 3] = ts[k * 4 + 3]
+			var idx: PackedInt32Array
+			if a[Mesh.ARRAY_INDEX] != null:
+				idx = (a[Mesh.ARRAY_INDEX] as PackedInt32Array).duplicate()
+			else:
+				idx = PackedInt32Array()
+				for k in nv:
+					idx.append(k)
+			if flip:
+				for k in range(0, idx.size() - 2, 3):
+					var tmp := idx[k + 1]
+					idx[k + 1] = idx[k + 2]
+					idx[k + 2] = tmp
+			if not groups.has(mat):
+				groups[mat] = []
+				order.append(mat)
+			groups[mat].append({"v": out_v, "n": out_n, "t": out_t, "uv": a[Mesh.ARRAY_TEX_UV], "uv2": a[Mesh.ARRAY_TEX_UV2], "c": a[Mesh.ARRAY_COLOR], "i": idx})
+	var am := ArrayMesh.new()
+	for mat in order:
+		var pieces: Array = groups[mat]
+		var has_n := true
+		var has_t := true
+		var has_uv := false
+		var has_uv2 := false
+		var has_c := false
+		for pc in pieces:
+			has_n = has_n and not (pc["n"] as PackedVector3Array).is_empty()
+			has_t = has_t and not (pc["t"] as PackedFloat32Array).is_empty()
+			has_uv = has_uv or pc["uv"] != null
+			has_uv2 = has_uv2 or pc["uv2"] != null
+			has_c = has_c or pc["c"] != null
+		var V := PackedVector3Array()
+		var N := PackedVector3Array()
+		var Tg := PackedFloat32Array()
+		var UV := PackedVector2Array()
+		var UV2 := PackedVector2Array()
+		var C := PackedColorArray()
+		var I := PackedInt32Array()
+		for pc in pieces:
+			var base := V.size()
+			var pv: PackedVector3Array = pc["v"]
+			V.append_array(pv)
+			if has_n:
+				N.append_array(pc["n"])
+			if has_t:
+				Tg.append_array(pc["t"])
+			if has_uv:
+				if pc["uv"] != null:
+					UV.append_array(pc["uv"])
+				else:
+					var z := PackedVector2Array()
+					z.resize(pv.size())
+					UV.append_array(z)
+			if has_uv2:
+				if pc["uv2"] != null:
+					UV2.append_array(pc["uv2"])
+				else:
+					var z2 := PackedVector2Array()
+					z2.resize(pv.size())
+					UV2.append_array(z2)
+			if has_c:
+				if pc["c"] != null:
+					C.append_array(pc["c"])
+				else:
+					var w := PackedColorArray()
+					w.resize(pv.size())
+					w.fill(Color.WHITE)
+					C.append_array(w)
+			for ix in (pc["i"] as PackedInt32Array):
+				I.append(ix + base)
+		var arrs := []
+		arrs.resize(Mesh.ARRAY_MAX)
+		arrs[Mesh.ARRAY_VERTEX] = V
+		if has_n:
+			arrs[Mesh.ARRAY_NORMAL] = N
+		if has_t:
+			arrs[Mesh.ARRAY_TANGENT] = Tg
+		if has_uv:
+			arrs[Mesh.ARRAY_TEX_UV] = UV
+		if has_uv2:
+			arrs[Mesh.ARRAY_TEX_UV2] = UV2
+		if has_c:
+			arrs[Mesh.ARRAY_COLOR] = C
+		arrs[Mesh.ARRAY_INDEX] = I
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrs)
+		am.surface_set_material(am.get_surface_count() - 1, mat)
+	return am
 
 ## Los materiales de GTA vienen en modo «mezcla» (transparente) aunque sean pintura, plástico o calcos con borde recortado: se dibujan mucho más caros
 ## y se ordenan mal. Todo lo que no es vidrio ni luz pasa a «recorte» (opaco, con el borde de la textura). Se hace una sola vez por material.
@@ -222,6 +468,8 @@ func sync_from(p, dt: float, V) -> void:
 		steer_vis += (p.steerAngle * 7.5 - steer_vis) * (1.0 - exp(-dt * 25.0))
 		steer_node.basis = Basis(steer_axis, -steer_vis)
 	_animate_parts(dt, absf(p.vLong))
+	if not _under_nodes.is_empty():
+		_show_under(absf(p.roll) > 0.45 or absf(p.pitch) > 0.45) # el piso sólo se ve si el auto va muy inclinado
 
 func _animate_parts(dt: float, speed: float) -> void:
 	for pn in parts:
@@ -278,6 +526,7 @@ func hit(point: Vector3, dir: Vector3, speed: float) -> void:
 		elif hp < 55.0 and int(P["state"]) < 2 and (pn.begins_with("door") or pn == "bonnet" or pn == "boot" or pn.begins_with("bump")):
 			P["state"] = 2
 			_show_dam(P)
+			_refresh_engine()
 		elif hp < 80.0 and int(P["state"]) < 1:
 			P["state"] = 1
 			_show_dam(P)
@@ -285,7 +534,7 @@ func hit(point: Vector3, dir: Vector3, speed: float) -> void:
 	var depth := clampf(base * 0.0035, 0.01, 0.30)
 	for e in _meshes:
 		var mi: MeshInstance3D = e["mi"]
-		if not is_instance_valid(mi) or not mi.visible or mi.mesh == null:
+		if not is_instance_valid(mi) or not mi.visible or mi.mesh == null or bool(e.get("nodent", false)):
 			continue
 		if String(e["part"]) != "" and (parts.get(e["part"], {}) as Dictionary).get("state", 0) >= 3:
 			continue
@@ -355,8 +604,10 @@ func _detach(pn: String, point: Vector3, dir: Vector3, speed: float) -> void:
 	if int(P["state"]) >= 3 or debris_root == null:
 		P["state"] = 3
 		(P["node"] as Node3D).visible = false
+		_refresh_engine()
 		return
 	P["state"] = 3
+	_refresh_engine()
 	var n: Node3D = P["node"]
 	var gx := n.global_transform
 	var sz: Vector3 = P["size"]
@@ -408,6 +659,7 @@ func repair() -> void:
 		var dam: Node3D = P["dam"]
 		if dam != null:
 			dam.visible = false
+	_refresh_engine()
 	# mallas abolladas: se descartan las copias (se vuelve a leer del modelo)
 	for mi in _dented.keys():
 		pass
