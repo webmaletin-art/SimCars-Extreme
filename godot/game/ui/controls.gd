@@ -3,7 +3,7 @@ extends Control
 ##  · VOLANTE: se gira con el dedo (el ángulo del dedo alrededor del centro, ×1,35; hasta 3 vueltas medias) y vuelve solo al soltar.
 ##  · BARRA de dirección (modo alternativo): se desliza el dedo a izquierda/derecha.
 ##  · PEDAL único: arriba de la mitad acelera, abajo de la mitad frena.
-##  · TIRA DE CAMBIOS (caja manual): deslizar 30 px = un cambio, o tocar ▲ / ▼.
+##  · TIRA DE CAMBIOS (caja manual): deslizar 30 px = un cambio, o tocar SUBIR / BAJAR.
 ##  · FRENO DE MANO (mantener apretado).
 ##  · ACELERÓMETRO: inclinar el teléfono como un volante (con calibración).
 ## Todo se dimensiona en "unidades HTML" (u = alto de pantalla / 393): así el tamaño relativo es el mismo que en la versión web.
@@ -624,7 +624,7 @@ func _draw_speed_panel(font: Font, u: float, vs: Vector2) -> void:
 	if shift_hi > 0.0:
 		draw_rect(Rect2(bar.position.x + bar.size.x * shift_lo, bar.position.y - 2.0 * u, bar.size.x * (shift_hi - shift_lo), bar.size.y + 4.0 * u), Color(0.2, 1.0, 0.45, 0.55), true)
 		if rpm_frac >= shift_lo and rpm_frac <= shift_hi:
-			draw_string(font, Vector2(x0, y0 + 90.0 * u), Tr.t("▲ ¡CAMBIÁ!"), HORIZONTAL_ALIGNMENT_CENTER, w, int(16.0 * u), Color(0.2, 1.0, 0.45))
+			draw_string(font, Vector2(x0, y0 + 90.0 * u), Tr.t("¡CAMBIÁ!"), HORIZONTAL_ALIGNMENT_CENTER, w, int(16.0 * u), Color(0.2, 1.0, 0.45))
 	var f := clampf(rpm_frac, 0.0, 1.0)
 	var col := Color(0.4, 0.71, 1.0).lerp(Color(1.0, 0.82, 0.4), clampf(f / 0.75, 0.0, 1.0))
 	if f > 0.75:
@@ -733,7 +733,7 @@ func _draw_gears(r: Rect2, font: Font, u: float) -> void:
 	var up := Rect2(r.position, Vector2(r.size.x, bh))
 	var mid := Rect2(r.position + Vector2(0, bh + 6.0 * u), Vector2(r.size.x, bh))
 	var dn := Rect2(r.position + Vector2(0, 2.0 * (bh + 6.0 * u)), Vector2(r.size.x, bh))
-	for pair in [[up, "▲", "SUBIR", _flash_up > 0.0], [dn, "▼", "BAJAR", _flash_dn > 0.0]]:
+	for pair in [[up, "+", "SUBIR", _flash_up > 0.0], [dn, "-", "BAJAR", _flash_dn > 0.0]]:
 		var b: Rect2 = pair[0]
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(0.23, 0.63, 1.0, 0.55) if pair[3] else Color(0.08, 0.1, 0.13, 0.62)

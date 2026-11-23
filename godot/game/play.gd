@@ -285,12 +285,12 @@ func _build_hud() -> void:
 	free_box.offset_top = 138
 	free_box.offset_bottom = 184
 	hud.add_child(free_box)
-	for zz in [["－", 1.0 / 1.25], ["＋", 1.25]]:
+	for zz in [["-", 1.0 / 1.25], ["+", 1.25]]:
 		var zb := UI.button(String(zz[0]), Vector2(80, 46), 26)
 		var f: float = zz[1]
 		zb.pressed.connect(func() -> void: rig.zoom(f))
 		free_box.add_child(zb)
-	free_hint = UI.label("Arrastrá para girar alrededor del auto · pellizcá o usá ＋/－ para acercar y alejar", 16, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_CENTER)
+	free_hint = UI.label("Arrastrá para girar alrededor del auto · pellizcá o usá +/- para acercar y alejar", 16, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_CENTER)
 	free_hint.anchor_left = 0.5
 	free_hint.anchor_right = 0.5
 	free_hint.offset_left = -330
@@ -327,7 +327,7 @@ func _refresh_cam_panel() -> void:
 	cam_panel.add_child(v)
 	var head := HBoxContainer.new()
 	v.add_child(head)
-	var prev := UI.button("◀", Vector2(60, 46), 22)
+	var prev := UI.button("<", Vector2(60, 46), 22)
 	prev.pressed.connect(func() -> void:
 		rig.next(-1)
 		profile["cam"] = rig.index
@@ -337,7 +337,7 @@ func _refresh_cam_panel() -> void:
 	var nm := UI.label(rig.cam_name(), 24, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(nm)
-	var nx := UI.button("▶", Vector2(60, 46), 22)
+	var nx := UI.button(">", Vector2(60, 46), 22)
 	nx.pressed.connect(func() -> void:
 		rig.next(1)
 		profile["cam"] = rig.index
@@ -440,7 +440,7 @@ func _show_tune() -> void:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 10)
 	v.add_child(top)
-	var bk := UI.button("◀ VOLVER", Vector2(170, 50), 20)
+	var bk := UI.button("< VOLVER", Vector2(170, 50), 20)
 	bk.pressed.connect(_show_pause_main)
 	top.add_child(bk)
 	top.add_child(UI.label("  REGLAJE · " + String(Garage.vehicles()[car_id]["name"]), 26, Color.WHITE))
@@ -464,7 +464,7 @@ func _show_pause_options() -> void:
 	panel.add_child(v)
 	var top := HBoxContainer.new()
 	v.add_child(top)
-	var bk := UI.button("◀ VOLVER", Vector2(170, 50), 20)
+	var bk := UI.button("< VOLVER", Vector2(170, 50), 20)
 	bk.pressed.connect(_show_pause_main)
 	top.add_child(bk)
 	top.add_child(UI.label("   AJUSTES", 30, Color.WHITE))
@@ -485,7 +485,7 @@ func _show_perf() -> void:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 10)
 	v.add_child(top)
-	var bk := UI.button("◀ VOLVER", Vector2(160, 48), 20)
+	var bk := UI.button("< VOLVER", Vector2(160, 48), 20)
 	bk.pressed.connect(_show_pause_main)
 	top.add_child(bk)
 	var go := UI.button("MEDIR AHORA (≈25 s)", Vector2(300, 48), 20, true)

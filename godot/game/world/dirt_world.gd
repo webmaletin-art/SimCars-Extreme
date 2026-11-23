@@ -280,7 +280,7 @@ func _build_props() -> void:
 		board.rotation.y = face
 		props.add_child(board)
 		var lb2 := Label3D.new()
-		lb2.text = "◀◀◀" if cv > 0.0 else "▶▶▶"
+		lb2.text = "<<<" if cv > 0.0 else ">>>"
 		lb2.font_size = 80
 		lb2.pixel_size = 0.010
 		lb2.modulate = Color(0.1, 0.1, 0.1)

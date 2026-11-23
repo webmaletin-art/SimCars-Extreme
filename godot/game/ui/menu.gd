@@ -50,7 +50,7 @@ func _title(parent: Control, big := true) -> void:
 	parent.add_child(t2)
 
 func _back_button(to: Callable) -> Button:
-	var b := UI.button("◀  VOLVER", Vector2(200, 56), 22)
+	var b := UI.button("<  VOLVER", Vector2(200, 56), 22)
 	b.position = Vector2(24, 20)
 	b.pressed.connect(to)
 	return b
@@ -190,7 +190,7 @@ func _garage() -> void:
 		b.add_theme_stylebox_override("hover", UI.style(col.lightened(0.15), 21, UI.ACC2, 3))
 		b.add_theme_stylebox_override("pressed", UI.style(col, 21, Color.WHITE, 3))
 		if hexc == "":
-			b.text = "◌"
+			b.text = "·"
 		b.pressed.connect(func() -> void:
 			(profile["paint"] as Dictionary)[id] = hexc
 			Profile.save_profile(profile)
@@ -199,7 +199,7 @@ func _garage() -> void:
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 10)
 	v.add_child(nav)
-	var prev := UI.button("◀", Vector2(84, 56), 30)
+	var prev := UI.button("<", Vector2(84, 56), 30)
 	prev.pressed.connect(func() -> void:
 		_car_i = (_car_i + _cars.size() - 1) % _cars.size()
 		_garage())
@@ -211,7 +211,7 @@ func _garage() -> void:
 		Profile.save_profile(profile)
 		_main())
 	nav.add_child(pick)
-	var nxt := UI.button("▶", Vector2(84, 56), 30)
+	var nxt := UI.button(">", Vector2(84, 56), 30)
 	nxt.pressed.connect(func() -> void:
 		_car_i = (_car_i + 1) % _cars.size()
 		_garage())
@@ -242,7 +242,7 @@ func _char() -> void:
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 10)
 	v.add_child(nav)
-	var prev := UI.button("◀", Vector2(84, 56), 30)
+	var prev := UI.button("<", Vector2(84, 56), 30)
 	prev.pressed.connect(func() -> void:
 		_char_i = (_char_i + _chars.size() - 1) % _chars.size()
 		_char())
@@ -254,7 +254,7 @@ func _char() -> void:
 		Profile.save_profile(profile)
 		_main())
 	nav.add_child(pick)
-	var nxt := UI.button("▶", Vector2(84, 56), 30)
+	var nxt := UI.button(">", Vector2(84, 56), 30)
 	nxt.pressed.connect(func() -> void:
 		_char_i = (_char_i + 1) % _chars.size()
 		_char())
