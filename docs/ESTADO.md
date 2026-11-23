@@ -42,3 +42,8 @@
 - **Honestidad**: 15 de las 18 combinaciones auto×piloto quedan con error de manos/pies < 9 cm y sin atravesar el asiento. Las 3 que no (Aiden en McLaren F1, Aiden y Mujer en F1 GTR) tienen las marcas del volante/pedales demasiado lejos para su estatura: se marcan `"ok": false` y el juego usa el ajuste de siempre. Se arreglan marcando mejor esos autos.
 - **Camino de tierra realista**: relieve con ondulaciones, huellas de rodada y banquina/zanja, pozos con agujero real en el shader, charcos, polvo y tierra que salta según la velocidad, pasto que se aparta al pasar el auto, árboles y arbustos que se mecen, huellas de neumáticos que quedan marcadas.
 - Nada probado todavía en un teléfono real.
+
+## Cuarta tanda (23/11/2026): circuito de asfalto
+- **Mapa nuevo «CIRCUITO DE ASFALTO»** (JUGAR → mapa): ~1,5 km cerrado, pista de 13 m con bombeo, recta de largada con pórtico y línea a cuadros, horquilla, S y curva rápida, subidas suaves (máx. ~3 %). Curbs rojos y blancos, línea blanca de borde, zona de escape de grava (agarre de banquina) y pasto, barrera a franjas rojo/blanco que el auto no cruza, pilas de neumáticos en el lado de afuera de las curvas, carteles de curva, dos tribunas con gente de colores, edificio de boxes y bosque de fondo.
+- Reutiliza el motor del camino de tierra: `asphalt_track.gd` hereda de `dirt_track.gd` (se le agregaron ganchos `_ctrl/_elev/_setup/road_half/fence_half/profile`) y `asphalt_world.gd` de `dirt_world.gd`. Ayuda de trazada, «volver a la pista» y GPS de la largada funcionan igual.
+- Las marcas de patinada en asfalto son las de siempre (oscuras al patinar). Nada probado en un teléfono.

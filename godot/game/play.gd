@@ -17,6 +17,7 @@ const CarVisual := preload("res://game/car/car_visual.gd")
 const Cockpit := preload("res://game/car/cockpit.gd")
 const LotWorld := preload("res://game/world/lot_world.gd")
 const DirtWorld := preload("res://game/world/dirt_world.gd")
+const AsphaltWorld := preload("res://game/world/asphalt_world.gd")
 const Garage := preload("res://game/data/garage.gd")
 const Profile := preload("res://game/save/profile.gd")
 const OptionsPanel := preload("res://game/ui/options_panel.gd")
@@ -103,14 +104,18 @@ func _S(k: String) -> Variant:
 	return (profile["settings"] as Dictionary)[k]
 
 func _build() -> void:
-	is_dirt = String(profile.get("map", "lot")) == "dirt"
-	world = DirtWorld.new() if is_dirt else LotWorld.new()
+	var map_id := String(profile.get("map", "lot"))
+	is_dirt = map_id == "dirt" or map_id == "asphalt" # (circuito con eje: ayuda de trazada, volver a la pista, largada propia)
+	if map_id == "asphalt":
+		world = AsphaltWorld.new()
+	else:
+		world = DirtWorld.new() if is_dirt else LotWorld.new()
 	add_child(world)
 	var t_build := Time.get_ticks_msec()
 	world.build({"parked": int(_S("parked")), "grass": float(_S("grass")), "trees": float(_S("trees")), "shadows": _S("shadows") != "off",
 		"backdrop": bool(_S("backdrop")), "cones": bool(_S("cones"))})
 	track = world.track
-	print("MUNDO armado en %d ms (%s)" % [Time.get_ticks_msec() - t_build, "camino de tierra" if is_dirt else "estacionamiento"])
+	print("MUNDO armado en %d ms (%s)" % [Time.get_ticks_msec() - t_build, ("circuito de asfalto" if map_id == "asphalt" else "camino de tierra") if is_dirt else "estacionamiento"])
 	fx = Effects.new()
 	add_child(fx)
 	fx.setup(track)

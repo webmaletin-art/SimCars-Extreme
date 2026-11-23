@@ -30,6 +30,25 @@ func _default_lot() -> void:
 
 func _init() -> void:
 	_sample()
+	_setup()
+
+## Hooks para los circuitos que heredan (asfalto): puntos de control, altura del eje, anchos y perfil transversal
+func _ctrl() -> Array:
+	return CTRL
+
+func _elev(u: float) -> float:
+	return 2.4 * sin(TAU * 2.0 * u + 0.5) + 1.5 * sin(TAU * 3.0 * u + 1.7) + 0.8 * sin(TAU * 5.0 * u + 0.3) + 0.45 * sin(TAU * 8.0 * u + 2.0)
+
+func road_half() -> float:
+	return ROAD_HALF
+
+func fence_half() -> float:
+	return FENCE_HALF
+
+func profile(lat: float) -> float:
+	return cross_profile(lat)
+
+func _setup() -> void:
 	# lomos y ondas sobre el camino (cada rasgo se alinea con el eje: yaw = ángulo de la tangente)
 	_feature_at(0.17, "hump", 3.0, 0.07)
 	_feature_at(0.33, "wash", 14.0, 0.05, 10)
@@ -70,13 +89,14 @@ func _feature_at(t: float, kind: String, l: float, h: float, n := 0) -> void:
 
 ## Catmull-Rom cerrada, muestreada cada ~2 m
 func _sample() -> void:
-	var n := CTRL.size()
+	var CT := _ctrl()
+	var n := CT.size()
 	var raw := PackedVector2Array()
 	for i in n:
-		var p0: Vector2 = CTRL[(i - 1 + n) % n]
-		var p1: Vector2 = CTRL[i]
-		var p2: Vector2 = CTRL[(i + 1) % n]
-		var p3: Vector2 = CTRL[(i + 2) % n]
+		var p0: Vector2 = CT[(i - 1 + n) % n]
+		var p1: Vector2 = CT[i]
+		var p2: Vector2 = CT[(i + 1) % n]
+		var p3: Vector2 = CT[(i + 2) % n]
 		for k in 24:
 			var t := float(k) / 24.0
 			var t2 := t * t
@@ -113,7 +133,7 @@ func _sample() -> void:
 	hprof = PackedFloat32Array()
 	for i in m:
 		var u := float(cum[i]) / length
-		hprof.append(2.4 * sin(TAU * 2.0 * u + 0.5) + 1.5 * sin(TAU * 3.0 * u + 1.7) + 0.8 * sin(TAU * 5.0 * u + 0.3) + 0.45 * sin(TAU * 8.0 * u + 2.0))
+		hprof.append(_elev(u))
 	coarse = PackedVector3Array()
 	for i in range(0, m, 5):
 		coarse.append(Vector3(pts[i].x, pts[i].y, hprof[i]))
@@ -177,7 +197,7 @@ static func cross_profile(lat: float) -> float:
 func base_height(x: float, z: float) -> float:
 	var nr := nearest(x, z)
 	var d: float = nr["d"]
-	return axis_height(nr, x, z) + cross_profile(float(nr["side"]) if d < 7.0 else 7.0)
+	return axis_height(nr, x, z) + profile(float(nr["side"]) if d < 7.0 else 7.0)
 
 ## Relieve del terreno lejano (sólo visual): sigue la altura del camino cerca y se mezcla suavemente con lomas propias lejos
 func terrain_height(x: float, z: float) -> float:
@@ -205,15 +225,15 @@ func surface_at(x: float, z: float) -> int:
 			return 5
 	var nr := nearest(x, z)
 	var d: float = nr["d"]
-	if d < ROAD_HALF:
+	if d < road_half():
 		return SURF_DIRT
-	if d < FENCE_HALF + 0.5:
+	if d < fence_half() + 0.5:
 		return SURF_SHOULDER
 	return SURF_GRASS
 
 func ground_info(x: float, z: float) -> Vector2:
 	var nr := nearest(x, z) # (una sola búsqueda por consulta: altura y superficie salen de la misma)
-	var h := axis_height(nr, x, z) + cross_profile(float(nr["side"]))
+	var h := axis_height(nr, x, z) + profile(float(nr["side"]))
 	for f in features:
 		var cx: float = f["cx"]
 		var cz: float = f["cz"]
@@ -223,9 +243,9 @@ func ground_info(x: float, z: float) -> Vector2:
 		h += feat_height(f, x, z)
 	var d: float = nr["d"]
 	var surf := SURF_GRASS
-	if d < ROAD_HALF:
+	if d < road_half():
 		surf = SURF_DIRT
-	elif d < FENCE_HALF + 0.5:
+	elif d < fence_half() + 0.5:
 		surf = SURF_SHOULDER
 	for m in mud:
 		var dx: float = x - float(m["x"])
@@ -240,7 +260,7 @@ func push(x: float, z: float, r: float) -> Vector3:
 	var best := Vector3(0, 0, 0)
 	var nr := nearest(x, z)
 	var d: float = nr["d"]
-	var lim := FENCE_HALF - 0.15 - r
+	var lim := fence_half() - 0.15 - r
 	if d > lim:
 		var q: Vector2 = pts[nr["i"]]
 		var dir := (q - Vector2(x, z))
