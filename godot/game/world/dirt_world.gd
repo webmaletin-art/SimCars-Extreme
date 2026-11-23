@@ -521,7 +521,7 @@ func _build_details(dirt_props := true) -> void:
 			if rng.randf() < 0.14 * g:
 				var q4: Vector2 = p2 + nl2 * float(side) * (fh + rng.randf_range(0.2, 2.2))
 				flower_x[ft[rng.randi() % 4]].append(_xf(Vector3(q4.x, gy(q4.x, q4.y) - 0.02, q4.y), rng.randf_range(1.0, 1.7)))
-			if dirt_props and rng.randf() < 0.9: # piedras de la zanja y del borde
+			if false: # (piedras 3D de la zanja: sacadas a pedido del dueño, molestaban)
 				var q6: Vector2 = p2 + nl2 * float(side) * rng.randf_range(4.2, 6.2)
 				var sc := rng.randf_range(0.06, 0.30)
 				var b := Basis(Vector3.UP, rng.randf() * TAU) * Basis.from_scale(Vector3(sc * rng.randf_range(1.0, 1.6), sc * rng.randf_range(0.5, 0.9), sc * rng.randf_range(1.0, 1.4)))

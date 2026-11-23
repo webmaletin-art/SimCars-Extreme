@@ -229,14 +229,14 @@ def tex_asfalto(path, res=1024):
     render(path)
     tileify(path)
 
-def tex_tierra(path, res=1024, red=False):
+def tex_tierra(path, res=1024, red=False, pure=False):
     sc = reset((res, res))
     world_color((0.7, 0.72, 0.8), 0.5)
     area = 3.0
     m, nt = mat("tierra")
     tc = nt.nodes.new("ShaderNodeTexCoord")
     nz1 = noise(nt, 3.0, 8, 0.65, tc.outputs["Object"])
-    nz2 = noise(nt, 140.0 if red else 45.0, 5, 0.6, tc.outputs["Object"])
+    nz2 = noise(nt, 90.0 if red else 45.0, 6, 0.65, tc.outputs["Object"])
     vor = voronoi(nt, 330 if red else 120, tc.outputs["Object"])
     if red: # tierra roja de camino rural: grano fino, ocre y anaranjada
         base = ramp(nt, [(0.0, (0.40, 0.13, 0.045, 1)), (0.5, (0.62, 0.23, 0.085, 1)), (1.0, (0.80, 0.36, 0.14, 1))])
@@ -272,7 +272,7 @@ def tex_tierra(path, res=1024, red=False):
     snt.links.new(sn.outputs["Fac"], sb.inputs["Height"])
     snt.links.new(sb.outputs[0], sp.inputs["Normal"])
     bm = bmesh.new()
-    for i in range(150 if red else 230):
+    for i in range(0 if pure else (150 if red else 230)):
         r = rnd.choice([0.006, 0.008, 0.01, 0.014, 0.02, 0.03] if red else [0.012, 0.016, 0.02, 0.025, 0.03, 0.04, 0.05, 0.07]) * rnd.uniform(0.8, 1.2)
         x, y = rnd.uniform(-area / 2, area / 2), rnd.uniform(-area / 2, area / 2)
         mt = Matrix.Translation((x, y, r * 0.3)) @ Matrix.Rotation(rnd.uniform(0, 6.28), 4, "Z") @ Matrix.Diagonal((r * rnd.uniform(1.0, 1.5), r * rnd.uniform(0.8, 1.2), r * 0.7, 1))
@@ -285,7 +285,7 @@ def tex_tierra(path, res=1024, red=False):
     so = bpy.data.objects.new("stones", me)
     bpy.context.collection.objects.link(so)
     so.data.materials.append(stone_m)
-    if red:  # pajitas secas tiradas y terrones: rayitas claras
+    if red and not pure:  # pajitas secas tiradas y terrones: rayitas claras
         straw_m, stn = mat("paja")
         spp = principled(stn, (0.72, 0.58, 0.26, 1), 0.9)
         bm2 = bmesh.new()
@@ -331,6 +331,42 @@ def tex_tierra(path, res=1024, red=False):
         out = gray + (out - gray) * 0.78
         out = np.clip(out, 0, 255)
         Image.fromarray(out.astype(np.uint8)).save(path)
+
+def _periodic_noise(n, rng, beta, cutoff=None):
+    """ruido repetible (periódico) con espectro 1/f^beta: no puede tener costuras"""
+    f = np.fft.fftfreq(n)[:, None] ** 2 + np.fft.fftfreq(n)[None, :] ** 2
+    f[0, 0] = 1.0
+    amp = 1.0 / (f ** (beta / 2.0))
+    amp[0, 0] = 0.0
+    if cutoff:
+        amp = amp * np.exp(-f / (cutoff ** 2))
+    z = np.fft.ifft2(np.fft.fft2(rng.standard_normal((n, n))) * amp).real
+    z = (z - z.mean()) / (z.std() + 1e-9)
+    return z
+
+def tex_tierra_pura(path, res=1024, seed=11):
+    """tierra de camino rural, SIN piedras ni pajas: grano fino, terroncitos chicos y apenas manchas de humedad. Se hace con ruido periódico (sin costuras)
+    y relieve iluminado de costado; el color medio sale de las fotos de referencia (rojiza, ocre, algo apagada)."""
+    from PIL import Image
+    rng = np.random.default_rng(seed)
+    n = res
+    low = _periodic_noise(n, rng, 2.2)  # manchas muy suaves (humedad / tierra más clara)
+    mid = _periodic_noise(n, rng, 1.3)  # terrones
+    fine = _periodic_noise(n, rng, 0.6)  # grano
+    speck = _periodic_noise(n, rng, 0.0)  # granito
+    h = 0.55 * mid + 0.9 * fine + 0.5 * speck  # relieve
+    # relieve iluminado de costado (luz desde arriba a la izquierda)
+    dx = np.roll(h, -1, axis=1) - np.roll(h, 1, axis=1)
+    dy = np.roll(h, -1, axis=0) - np.roll(h, 1, axis=0)
+    shade = 1.0 + 0.16 * (-dx * 0.7 - dy * 0.7)
+    dark = np.array([104.0, 56.0, 33.0])
+    light = np.array([172.0, 102.0, 62.0])
+    t = np.clip(0.5 + 0.17 * low + 0.10 * mid + 0.07 * fine, 0, 1)[:, :, None]
+    col = dark * (1 - t) + light * t
+    col = col * shade[:, :, None] * (1.0 + 0.05 * speck[:, :, None])
+    gray = col.mean(axis=2, keepdims=True)
+    col = gray + (col - gray) * 0.9
+    Image.fromarray(np.clip(col, 0, 255).astype(np.uint8)).save(path)
 
 def tex_pasto(path, res=1024):
     sc = reset((res, res))
@@ -1070,7 +1106,7 @@ def main():
     jobs = {
         "asfalto": lambda: tex_asfalto(P("asfalto.png")),
         "tierra": lambda: tex_tierra(P("tierra.png")),
-        "tierra_roja": lambda: tex_tierra(P("tierra_roja.png"), 1024, True),
+        "tierra_roja": lambda: tex_tierra_pura(P("tierra_roja.png")),
         "pasto": lambda: tex_pasto(P("pasto.png")),
         "hormigon": lambda: tex_hormigon(P("hormigon.png")),
         "carton": lambda: tex_carton(P("carton.png")),

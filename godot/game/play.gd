@@ -69,6 +69,7 @@ var dbg_cam := []
 var crash := false
 var hidecar := false
 var opt_script := ""
+var dbg_steer := 0.0 # (depuración) fuerza el volante
 var dbg_arc := -1.0 # (depuración) largar a esta distancia (m) sobre el eje del circuito
 var _vp_base: Viewport
 
@@ -90,6 +91,8 @@ func _ready() -> void:
 			call_deferred("_auto_perf")
 		elif a == "--hidecar": # (depuración) oculta el auto y marca la cadera / el asiento (verde) y el pedal (rojo)
 			hidecar = true
+		elif a.begins_with("--steer="):
+			dbg_steer = float(a.substr(8))
 		elif a.begins_with("--arc="):
 			dbg_arc = float(a.substr(6))
 		elif a == "--crash":
@@ -743,6 +746,8 @@ func _process(dt: float) -> void:
 			thr = 1.0
 			brk = 0.0
 			st = 0.0
+	if dbg_steer != 0.0:
+		st = dbg_steer
 	st = _line_assist(st)
 	car.in_throttle = thr
 	car.in_brake = brk

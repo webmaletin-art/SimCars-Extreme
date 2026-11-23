@@ -85,17 +85,150 @@ func load_model() -> bool:
 		wheels.append({"steer": steer, "spin": wn, "front": w.begins_with("f"), "cx": c.x, "cz": c.z, "base_y": c.y})
 	_fix_materials(model)
 	_find_glass(model)
-	steer_node = model.get_node_or_null("steer_wheel") as Node3D
+	# (Godot le saca el sufijo «_wheel» a los nodos al importar: el volante llega como «steer»; antes sólo se buscaba «steer_wheel» y no giraba NUNCA)
+	steer_node = (model.get_node_or_null("steer_wheel") if model.has_node("steer_wheel") else model.get_node_or_null("steer")) as Node3D
 	if meta.has("steer_axis"):
 		var a: Array = meta["steer_axis"]
 		steer_axis = Vector3(a[0], a[1], a[2]).normalized()
 	for ch in model.get_children():
 		if ch.name.begins_with("part_"):
 			_register_part(ch as Node3D)
+	if steer_node == null:
+		_extract_steer()
 	_collect_meshes(model)
 	_hide_internals()
 	_merge_static()
 	return true
+
+# ───────────────────────── volante que viene pegado al interior ─────────────────────────
+## Autos cuyo modelo no trae el volante como pieza (viene dentro de la malla del interior / chasis): se separa por geometría las caras que caen dentro del disco del
+## volante (radio máx × rad, grosor ± ax a lo largo del eje) y pasan a un nodo «steer» que gira con las manos del piloto.
+## «mat»: palabra de los materiales del volante, para recalcular el centro real (en el F1 el centro del JSON queda a ~15 cm del volante de verdad)
+const STEER_EXTRACT := {"aventador_s": {"rad": 1.2, "ax": 0.07}, "mclaren_f1": {"rad": 1.05, "ax": 0.045, "mat": "steer"}}
+static var _steer_cache := {}
+
+func _extract_steer() -> void:
+	var spec: Dictionary = STEER_EXTRACT.get(id, {})
+	if spec.is_empty() or not meta.has("steer_center"):
+		return
+	var cc: Array = meta["steer_center"]
+	var c := Vector3(cc[0], cc[1], cc[2])
+	var r := float(meta.get("steer_radius", 0.18)) * float(spec["rad"])
+	var half := float(spec["ax"])
+	var cands: Array = []
+	for n in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		var p: Node = mi.get_parent()
+		var skip := false
+		while p != null and p != model:
+			var pn := String(p.name)
+			if pn.begins_with("wheel_") or pn.begins_with("steer") or pn.begins_with("part_"):
+				skip = true
+				break
+			p = p.get_parent()
+		if not skip and mi.mesh is ArrayMesh:
+			cands.append(mi)
+	var key := id + ("_lite" if lite else "")
+	var cache: Dictionary = _steer_cache.get(key, {})
+	if cache.is_empty():
+		cache = {"src": {}, "wheel": null, "center": c}
+		if spec.has("mat"): # centro y radio reales: caja de las caras de los materiales del volante
+			var lo := Vector3(1e9, 1e9, 1e9)
+			var hi := Vector3(-1e9, -1e9, -1e9)
+			var found := false
+			for mi in cands:
+				var T0 := _rel_xf(mi, model)
+				for si in mi.mesh.get_surface_count():
+					var m0: Material = mi.mesh.surface_get_material(si)
+					if m0 == null or not String(m0.resource_name).to_lower().contains(String(spec["mat"])):
+						continue
+					for v0 in (mi.mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+						var pw := T0 * v0
+						if (pw - c).length() < 0.5:
+							lo = lo.min(pw)
+							hi = hi.max(pw)
+							found = true
+			if found:
+				c = (lo + hi) * 0.5
+				r = maxf(maxf(hi.x - lo.x, hi.y - lo.y), hi.z - lo.z) * 0.5 * float(spec["rad"])
+				cache["center"] = c
+		var wheel := ArrayMesh.new()
+		for mi in cands:
+			var T := _rel_xf(mi, model)
+			var nb := T.basis.inverse().transposed()
+			var mesh: ArrayMesh = mi.mesh
+			var new_mesh := ArrayMesh.new()
+			var changed := false
+			for si in mesh.get_surface_count():
+				var a: Array = mesh.surface_get_arrays(si)
+				var mat := mesh.surface_get_material(si)
+				if mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES or a[Mesh.ARRAY_INDEX] == null:
+					new_mesh.add_surface_from_arrays(mesh.surface_get_primitive_type(si), a)
+					new_mesh.surface_set_material(new_mesh.get_surface_count() - 1, mat)
+					continue
+				var vs: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+				var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+				var keep := PackedInt32Array()
+				var wv := PackedVector3Array()
+				var wn := PackedVector3Array()
+				var wu := PackedVector2Array()
+				var ns: Variant = a[Mesh.ARRAY_NORMAL]
+				var uvs: Variant = a[Mesh.ARRAY_TEX_UV]
+				for k in range(0, idx.size() - 2, 3):
+					var inside := true
+					for q in 3:
+						var d: Vector3 = T * vs[idx[k + q]] - c
+						var axial := d.dot(steer_axis_of(meta))
+						if (d - steer_axis_of(meta) * axial).length() > r or absf(axial) > half:
+							inside = false
+							break
+					if inside:
+						for q in 3:
+							var vi := idx[k + q]
+							wv.append(T * vs[vi] - c)
+							wn.append((nb * (ns as PackedVector3Array)[vi]).normalized() if ns != null else Vector3.UP)
+							wu.append((uvs as PackedVector2Array)[vi] if uvs != null else Vector2.ZERO)
+					else:
+						keep.append(idx[k])
+						keep.append(idx[k + 1])
+						keep.append(idx[k + 2])
+				if wv.size() > 0:
+					changed = true
+					var wa := []
+					wa.resize(Mesh.ARRAY_MAX)
+					wa[Mesh.ARRAY_VERTEX] = wv
+					wa[Mesh.ARRAY_NORMAL] = wn
+					wa[Mesh.ARRAY_TEX_UV] = wu
+					wheel.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, wa)
+					wheel.surface_set_material(wheel.get_surface_count() - 1, mat)
+				if keep.size() > 0:
+					a[Mesh.ARRAY_INDEX] = keep
+					new_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
+					new_mesh.surface_set_material(new_mesh.get_surface_count() - 1, mat)
+			if changed:
+				(cache["src"] as Dictionary)[str(model.get_path_to(mi))] = new_mesh
+		if wheel.get_surface_count() > 0:
+			cache["wheel"] = wheel
+		_steer_cache[key] = cache
+	if cache["wheel"] == null:
+		return
+	c = cache["center"]
+	for mi in cands:
+		var pth := str(model.get_path_to(mi))
+		if (cache["src"] as Dictionary).has(pth):
+			mi.mesh = (cache["src"] as Dictionary)[pth]
+	var sn := Node3D.new()
+	sn.name = "steer"
+	sn.position = c
+	model.add_child(sn)
+	var wm := MeshInstance3D.new()
+	wm.mesh = cache["wheel"]
+	sn.add_child(wm)
+	steer_node = sn
+
+static func steer_axis_of(m: Dictionary) -> Vector3:
+	var a: Array = m.get("steer_axis", [0, 0.34, -0.94])
+	return Vector3(a[0], a[1], a[2]).normalized()
 
 # ───────────────────────── optimización que no cambia lo que se ve ─────────────────────────
 ## Piezas internas que no se ven con el auto entero: el motor (sólo con el capó abierto o caído) y el piso / escape (sólo si el auto vuelca o salta muy inclinado).

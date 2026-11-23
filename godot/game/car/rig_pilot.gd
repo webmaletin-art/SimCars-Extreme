@@ -302,6 +302,8 @@ func hide_head(v: bool) -> void:
 		return
 	head_hidden = v
 	skel.set_bone_pose_scale(B["Head"], Vector3.ONE * (0.001 if v else 1.0))
+	if B.has("Neck"): # (en primera persona la cámara queda pegada al cuello: sin esto se veía un globo de piel tapando todo, sobre todo en el Aventador)
+		skel.set_bone_pose_scale(B["Neck"], Vector3.ONE * (0.001 if v else 1.0))
 	for hm in head_meshes:
 		if is_instance_valid(hm):
 			(hm as MeshInstance3D).visible = not v
