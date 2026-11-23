@@ -43,6 +43,8 @@ var lbl_info: Label
 var lbl_fps: Label
 var lbl_dmg: Label
 var cam_panel: Control
+var free_box: HBoxContainer
+var free_hint: Label
 var pause_panel: Control
 var car_id := ""
 var acc := 0.0
@@ -226,6 +228,30 @@ func _build_hud() -> void:
 		cam_panel.visible = not cam_panel.visible
 		_refresh_cam_panel())
 	hud.add_child(cb)
+	# cámara libre: botones de acercar / alejar (además del pellizco y la rueda del mouse) y una ayuda
+	free_box = HBoxContainer.new()
+	free_box.add_theme_constant_override("separation", 8)
+	free_box.anchor_left = 1.0
+	free_box.anchor_right = 1.0
+	free_box.offset_left = -190
+	free_box.offset_right = -20
+	free_box.offset_top = 138
+	free_box.offset_bottom = 184
+	hud.add_child(free_box)
+	for zz in [["－", 1.0 / 1.25], ["＋", 1.25]]:
+		var zb := UI.button(String(zz[0]), Vector2(80, 46), 26)
+		var f: float = zz[1]
+		zb.pressed.connect(func() -> void: rig.zoom(f))
+		free_box.add_child(zb)
+	free_hint = UI.label("Arrastrá para girar alrededor del auto · pellizcá o usá ＋/－ para acercar y alejar", 16, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_CENTER)
+	free_hint.anchor_left = 0.5
+	free_hint.anchor_right = 0.5
+	free_hint.offset_left = -330
+	free_hint.offset_right = 330
+	free_hint.offset_top = 132
+	free_hint.add_theme_constant_override("outline_size", 4)
+	free_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	hud.add_child(free_hint)
 	ui = CanvasLayer.new()
 	ui.layer = 20
 	ui.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -437,6 +463,18 @@ func _toggle_pause() -> void:
 		_save_stats()
 		_show_pause_main()
 
+## Cámara libre con mouse (en el teléfono: arrastrar con un dedo gira, pellizcar con dos acerca/aleja; lo hace Controls)
+func _unhandled_input(e: InputEvent) -> void:
+	if rig == null or rig.mode() != "custom":
+		return
+	if e is InputEventMouseMotion and (e.button_mask & MOUSE_BUTTON_MASK_LEFT or e.button_mask & MOUSE_BUTTON_MASK_RIGHT):
+		rig.drag(e.relative)
+	elif e is InputEventMouseButton and e.pressed:
+		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
+			rig.zoom(1.12)
+		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			rig.zoom(1.0 / 1.12)
+
 func _unhandled_key_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:
 		match e.keycode:
@@ -487,9 +525,14 @@ func _apply_settings() -> void:
 
 func _update_camera_mode() -> void:
 	if cockpit != null:
-		cockpit.set_inside(rig.is_inside())
+		cockpit.set_inside(rig.mode() == "onboard") # la cabeza se oculta sólo con la cámara del casco
 		# con las cámaras de afuera el piloto se puede ocultar (opción): no se calcula su pose ni se dibuja
 		cockpit.set_visible(rig.is_inside() or bool(_S("pilot_outside")))
+	if visual != null:
+		visual.set_glass_inside(rig.is_inside())
+	if free_box != null:
+		free_box.visible = rig.mode() == "custom"
+		free_hint.visible = rig.mode() == "custom"
 
 func _save_stats() -> void:
 	Profile.save_profile(profile)

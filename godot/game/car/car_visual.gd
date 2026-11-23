@@ -84,6 +84,7 @@ func load_model() -> bool:
 		wn.position = Vector3.ZERO
 		wheels.append({"steer": steer, "spin": wn, "front": w.begins_with("f"), "cx": c.x, "cz": c.z, "base_y": c.y})
 	_fix_materials(model)
+	_find_glass(model)
 	steer_node = model.get_node_or_null("steer_wheel") as Node3D
 	if meta.has("steer_axis"):
 		var a: Array = meta["steer_axis"]
@@ -120,6 +121,34 @@ static func _fix_materials(root: Node) -> void:
 				continue
 			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 			m.alpha_scissor_threshold = 0.4
+
+## Vidrios polarizados: oscuros vistos desde afuera, claros desde adentro (si no, desde la cabina no se ve nada).
+## Vidrio = material transparente, de color neutro (las luces son rojas / naranjas) y sin nombre de luz.
+var _glass := {} # material → color original
+const LIGHT_WORDS := ["light", "lamp", "faro", "flash", "glow", "lente", "optica", "reflector", "giro", "brake"]
+func _find_glass(root: Node) -> void:
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mi as MeshInstance3D).mesh
+		if mesh == null:
+			continue
+		for s in mesh.get_surface_count():
+			var m := mesh.surface_get_material(s) as BaseMaterial3D
+			if m == null or _glass.has(m) or m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
+				continue
+			var c := m.albedo_color
+			if c.a >= 0.95 or maxf(c.r, maxf(c.g, c.b)) - minf(c.r, minf(c.g, c.b)) > 0.25:
+				continue
+			var nm := m.resource_name.to_lower()
+			var is_light := false
+			for w in LIGHT_WORDS:
+				if nm.contains(w):
+					is_light = true
+			if not is_light:
+				_glass[m] = c
+
+func set_glass_inside(inside: bool) -> void:
+	for m in _glass:
+		(m as BaseMaterial3D).albedo_color = Color(1, 1, 1, 0.06) if inside else _glass[m]
 
 func _register_part(n: Node3D) -> void:
 	var pname := String(n.name).substr(5)

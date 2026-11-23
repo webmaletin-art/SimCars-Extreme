@@ -12,9 +12,9 @@ const CHARS := "res://game/models/characters/"
 
 ## Ajuste fino por auto (todo opcional): dz/dy/dx mueven al piloto (m), eye_dy sube/baja los ojos, hip_dy la cadera, wheel_r radio del aro
 const CABIN := {
-	"mclaren_f1": {"dy": -0.02, "wheel_r": 0.155},
-	"mclaren_f1_gtr": {},
-	"aventador_s": {"dy": -0.06, "dz": -0.05, "wheel_r": 0.165},
+	"mclaren_f1": {"dy": -0.02, "wheel_r": 0.155, "rc": [-0.16, 0.46]},
+	"mclaren_f1_gtr": {"rc": [-0.16, 0.46]},
+	"aventador_s": {"dy": -0.06, "dz": -0.05, "wheel_r": 0.165, "rc": [-0.2, 0.46]},
 	"ranger_limited": {"dy": -0.04},
 	"rx3_savanna": {},
 	"cls63_amg": {},
@@ -180,8 +180,11 @@ func camera_local(m: String, p: CarSnapshot, time: float, rough: float) -> Dicti
 	var cs: Vector3 = mo.cam_s
 	var vib := 0.0009 * (0.4 + rough * 1.6) * minf(1.0, absf(p.vLong) / 20.0)
 	if m == "rearcabin":
-		var pos := Vector3(xD * 0.55 + adj["x"], eY + adj["y"] + 0.30, eZ + adj["z"] - 1.15) + cs * 0.4
-		return {"pos": pos, "look": Vector3(xD * 0.5, eY - 0.10, eZ + 10.0), "roll": 0.0, "hfov": 100.0}
+		# tercera persona adentro: centrada, detrás y por encima de las dos butacas (se ven los dos asientos, el piloto y el tablero)
+		# (biplazas: detrás de las butacas está el motor; la cámara se arrima a la mampara — CABIN «rc»: [subir, adelantar])
+		var rc: Array = (CABIN.get(String(meta.get("id", "")), {}) as Dictionary).get("rc", [0.0, 0.0])
+		var pos := Vector3(0.0, eY + 0.16 + float(rc[0]), eZ - 0.80 + float(rc[1])) + cs * 0.4
+		return {"pos": pos, "look": Vector3(0.0, eY - 0.25, eZ + 6.0), "roll": 0.0, "hfov": 105.0}
 	var pos2 := eyep + Vector3(sin(time * 16.3) * vib, sin(time * 19.1 + 0.6) * vib, 0.0) + cs - Vector3(0, 0.07, 0.09)
 	var yaw := look_yaw * 0.6
 	var look := pos2 + Vector3(sin(yaw), -0.02, cos(yaw)) * 10.0

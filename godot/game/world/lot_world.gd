@@ -846,7 +846,7 @@ func _building_mesh(w: float, h: float, d: float, tile_w: float, tile_h: float) 
 		var tv := h / tile_h
 		var pts := [a, b, b + Vector3(0, h, 0), a + Vector3(0, h, 0)]
 		var uvs := [Vector2(0, tv), Vector2(tu, tv), Vector2(tu, 0), Vector2(0, 0)]
-		for idx in [0, 1, 2, 0, 2, 3]:
+		for idx in [0, 2, 1, 0, 3, 2]: # (orden de los vértices: la cara pintada mira hacia AFUERA de la caja, hacia el jugador)
 			st.set_uv(uvs[idx])
 			st.add_vertex(pts[idx])
 	st.generate_normals()

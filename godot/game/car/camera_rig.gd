@@ -5,13 +5,13 @@ extends RefCounted
 const CarSnapshot := preload("res://game/car/car_snapshot.gd")
 
 const CAMERAS := [
-	{"name": "Onboard (casco)", "mode": "onboard", "fov": 70.0},
+	{"name": "Primera persona (casco)", "mode": "onboard", "fov": 70.0},
 	{"name": "Media", "mode": "chase", "dist": 7.5, "height": 2.2, "look": 3.6, "lookH": 0.75, "fov": 58.0},
 	{"name": "Cerca/Alta", "mode": "chase", "dist": 4.8, "height": 2.9, "look": 3.0, "lookH": 0.6, "fov": 64.0},
 	{"name": "Lejos/Baja", "mode": "chase", "dist": 11.0, "height": 1.2, "look": 4.5, "lookH": 1.0, "fov": 54.0},
 	{"name": "Aérea", "mode": "chase", "dist": 15.0, "height": 6.0, "look": 2.0, "lookH": 0.2, "fov": 50.0},
 	{"name": "Cámara libre", "mode": "custom", "fov": 60.0},
-	{"name": "Interior (atrás del piloto)", "mode": "rearcabin", "fov": 68.0},
+	{"name": "Tercera persona interior (butacas)", "mode": "rearcabin", "fov": 68.0},
 	{"name": "Capó", "mode": "hood", "fov": 66.0},
 	{"name": "Paragolpes", "mode": "bumper", "fov": 70.0},
 ]
