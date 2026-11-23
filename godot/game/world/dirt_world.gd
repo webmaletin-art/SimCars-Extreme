@@ -10,6 +10,7 @@ const ROAD := preload("res://game/world/road.gdshader")
 const SPECIES := [
 	["arbol_bajo_a", 5.0, 1.0, 24], ["arbol_bajo_b", 5.0, 1.0, 18], ["arbol_bajo_c", 5.0, 0.75, 14], ["arbol_bajo_d", 5.0, 1.0, 16], ["arbol_bajo_e", 5.0, 1.0, 16],
 	["arbol_cipres", 8.0, 0.5, 5], ["arbol_alamo", 8.0, 0.417, 4]]
+var wall_set := ["bosque_lejos", "bosque_cerca", 11.0, 8.0] # texturas y alturas de la pared de fondo (el circuito urbano usa edificios)
 const WALL_OFF := 34.0 # hasta dónde se aleja la pared de bosque del eje (m)
 
 var dt: DirtTrack
@@ -407,7 +408,7 @@ func _clear_of_other_legs(q: Vector2, i: int, margin: float) -> bool:
 func _build_forest_wall() -> void:
 	for layer in 2:
 		var far := layer == 0
-		var tex := _tex("bosque_lejos" if far else "bosque_cerca")
+		var tex := _tex(String(wall_set[0] if far else wall_set[1]))
 		if tex == null:
 			continue
 		var m := StandardMaterial3D.new()
@@ -418,7 +419,7 @@ func _build_forest_wall() -> void:
 		m.cull_mode = BaseMaterial3D.CULL_DISABLED
 		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 		m.albedo_color = Color(0.86, 0.9, 0.86) if far else Color(1, 1, 1)
-		var hgt := 11.0 if far else 8.0
+		var hgt := float(wall_set[2] if far else wall_set[3])
 		for side in [1.0, -1.0]:
 			var offs := _wall_offsets(float(side))
 			var back := 0.0 if far else -(6.0 + 2.0 * float(layer))

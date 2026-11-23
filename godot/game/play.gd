@@ -111,9 +111,10 @@ func _S(k: String) -> Variant:
 
 func _build() -> void:
 	var map_id := String(profile.get("map", "lot"))
-	is_dirt = map_id == "dirt" or map_id == "asphalt" # (circuito con eje: ayuda de trazada, volver a la pista, largada propia)
-	if map_id == "asphalt":
+	is_dirt = map_id == "dirt" or map_id == "asphalt" or map_id == "city" # (circuito con eje: ayuda de trazada, volver a la pista, largada propia)
+	if map_id == "asphalt" or map_id == "city":
 		world = AsphaltWorld.new()
+		world.city = map_id == "city"
 	else:
 		world = DirtWorld.new() if is_dirt else LotWorld.new()
 	add_child(world)
@@ -121,7 +122,7 @@ func _build() -> void:
 	world.build({"parked": int(_S("parked")), "grass": float(_S("grass")), "trees": float(_S("trees")), "shadows": _S("shadows") != "off",
 		"backdrop": bool(_S("backdrop")), "cones": bool(_S("cones"))})
 	track = world.track
-	print("MUNDO armado en %d ms (%s)" % [Time.get_ticks_msec() - t_build, ("circuito de asfalto" if map_id == "asphalt" else "camino de tierra") if is_dirt else "estacionamiento"])
+	print("MUNDO armado en %d ms (%s)" % [Time.get_ticks_msec() - t_build, ("circuito urbano" if map_id == "city" else ("circuito de asfalto" if map_id == "asphalt" else "camino de tierra")) if is_dirt else "estacionamiento"])
 	fx = Effects.new()
 	add_child(fx)
 	fx.setup(track)

@@ -119,18 +119,20 @@ func _maps() -> void:
 	row.add_theme_constant_override("separation", 20)
 	row.position = Vector2(60, 110)
 	_box.add_child(row)
+	var nm: int = Garage.MAPS.size()
+	var cw := int((1160.0 - 20.0 * float(nm - 1)) / float(nm))
 	for m in Garage.MAPS:
-		var card := UI.panel(Vector2(380, 360), UI.BG, 18, 16.0)
+		var card := UI.panel(Vector2(cw, 360), UI.BG, 18, 16.0)
 		row.add_child(card)
 		var cv := VBoxContainer.new()
 		cv.add_theme_constant_override("separation", 8)
 		card.add_child(cv)
-		cv.add_child(UI.label(String(m["name"]), 26, Color.WHITE))
+		cv.add_child(UI.label(String(m["name"]), 22 if nm > 3 else 26, Color.WHITE))
 		var d := UI.label(String(m["desc"]), 18, UI.DIM)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		d.custom_minimum_size = Vector2(340, 170)
+		d.custom_minimum_size = Vector2(cw - 40, 170)
 		cv.add_child(d)
-		var go := UI.button("JUGAR AQUI", Vector2(300, 64), 26, true)
+		var go := UI.button("JUGAR AQUI", Vector2(minf(300.0, float(cw - 40)), 64), 24, true)
 		var mid: String = m["id"]
 		go.pressed.connect(func() -> void:
 			profile["map"] = mid

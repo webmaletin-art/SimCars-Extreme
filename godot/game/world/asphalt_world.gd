@@ -6,6 +6,7 @@ extends "res://game/world/dirt_world.gd"
 const AsphaltTrack := preload("res://game/world/asphalt_track.gd")
 
 var at: AsphaltTrack
+var city := false # circuito urbano: pared de edificios (png) y calle de concreto en vez de bosque y pasto
 
 func _init() -> void:
 	at = AsphaltTrack.new()
@@ -17,8 +18,13 @@ func _build_scene() -> void:
 	_build_track()
 	_build_barrier()
 	_build_tyres()
-	_build_forest() # (una hilera de árboles bajos + pared de bosque + bandas de pasto: heredado del camino de tierra)
-	_build_details(false)
+	if city:
+		wall_set = ["ciudad_lejos", "ciudad_cerca", 30.0, 16.0]
+		_build_forest_wall()
+		_build_lamps()
+	else:
+		_build_forest() # (una hilera de árboles bajos + pared de bosque + bandas de pasto: heredado del camino de tierra)
+		_build_details(false)
 	_build_scenery()
 	_build_start()
 	_build_signs_a()
@@ -50,6 +56,45 @@ func _nearest_mat(tex: Texture2D, unshaded := false) -> StandardMaterial3D:
 	return m
 
 # ───────────────────────── terreno ─────────────────────────
+func _ground_mat() -> StandardMaterial3D:
+	if city:
+		return _mat_tex("hormigon", Vector3(1, 1, 1), 0.95, Color(0.74, 0.74, 0.77))
+	return _mat_tex("pasto", Vector3(1, 1, 1), 0.95, Color(0.9, 1.0, 0.85))
+
+## Postes de luz cada 36 m a los dos lados (dos multimallas: poste y farol)
+func _build_lamps() -> void:
+	var poles: Array = []
+	var heads: Array = []
+	for i in range(4, at.pts.size(), 18):
+		var nl := Vector2(-at.tans[i].y, at.tans[i].x)
+		for side in [1.0, -1.0]:
+			var q: Vector2 = at.pts[i] + nl * float(side) * (AsphaltTrack.FH + 1.6)
+			var y0 := gy(q.x, q.y)
+			poles.append(Transform3D(Basis.IDENTITY, Vector3(q.x, y0 + 3.6, q.y)))
+			var to_track := Vector3(-nl.x * float(side), 0, -nl.y * float(side))
+			var yaw := atan2(to_track.x, to_track.z)
+			var hp := Vector3(q.x, y0 + 7.1, q.y) + to_track * 0.7
+			heads.append(Transform3D(Basis(Vector3.UP, yaw), hp))
+	for e in [[poles, Vector3(0.14, 7.2, 0.14), Color(0.25, 0.26, 0.3)], [heads, Vector3(0.45, 0.14, 1.6), Color(0.96, 0.95, 0.85)]]:
+		var xf: Array = e[0]
+		var bm := BoxMesh.new()
+		bm.size = e[1]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = bm
+		mm.instance_count = xf.size()
+		for k in xf.size():
+			mm.set_instance_transform(k, xf[k])
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		var fm := _flat(e[2], 0.8)
+		if e[2].r > 0.9:
+			fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mi.material_override = fm
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visibility_range_end = 220.0
+		props.add_child(mi)
+
 func _build_terrain_a() -> void:
 	var x0 := -270.0
 	var z0 := -380.0
@@ -85,13 +130,13 @@ func _build_terrain_a() -> void:
 	var mesh := st.commit()
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	var mat := _mat_tex("pasto", Vector3(1, 1, 1), 0.95, Color(0.9, 1.0, 0.85))
+	var mat := _ground_mat()
 	mat.vertex_color_use_as_albedo = true
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	props.add_child(mi)
 	_static_trimesh(mesh)
-	var far := _mat_tex("pasto", Vector3(300, 300, 1), 0.95, Color(0.55, 0.66, 0.46))
+	var far := _mat_tex("hormigon" if city else "pasto", Vector3(300, 300, 1), 0.95, Color(0.55, 0.55, 0.57) if city else Color(0.55, 0.66, 0.46))
 	_plane(Vector2(1800, 1800), -8.0, far, Vector3(150, 0, -120))
 
 # ───────────────────────── cintas de la pista ─────────────────────────
@@ -173,7 +218,7 @@ func _build_track() -> void:
 	grav.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_band(gl, -0.004, 3.0, 3.0, grav, true)
 	_band(_mirror(gl), -0.004, 3.0, 3.0, grav, true)
-	var grass := _mat_tex("pasto", Vector3(1, 1, 1), 0.95, Color(0.9, 1.0, 0.82))
+	var grass := _ground_mat()
 	grass.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var pl := [g1, g1 + 1.4, g1 + 2.8, f1]
 	_band(pl, -0.004, 4.0, 4.0, grass, true)

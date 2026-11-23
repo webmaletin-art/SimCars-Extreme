@@ -63,4 +63,5 @@ const MAPS := [
 	{"id": "lot", "name": "ESTACIONAMIENTO DE PRUEBAS", "desc": "Lomadas, rampas, tierra con piedras, conos que vuelan, postes que se rompen y autos estacionados. Para probar suspensión, golpes y derrapes."},
 	{"id": "dirt", "name": "CAMINO DE TIERRA", "desc": "Circuito cerrado de tierra, sin rivales, con cercos de madera a los costados y bosque que tapa la vista. Para dar vueltas y sentir cómo se agarra cada auto en tierra."},
 	{"id": "asphalt", "name": "CIRCUITO DE ASFALTO", "desc": "Circuito cerrado de asfalto de 1,5 km: pista ancha, recta de largada con tribunas, horquilla, S y curva rápida, curbs, zona de escape de grava y barreras. Para sentir la velocidad y el agarre de cada auto."},
+	{"id": "city", "name": "CIRCUITO URBANO", "desc": "El mismo circuito de asfalto, pero entre edificios, comercios y postes de luz. Para correr de ciudad."},
 ]

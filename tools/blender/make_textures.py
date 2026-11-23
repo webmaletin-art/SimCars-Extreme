@@ -1089,6 +1089,80 @@ def render_grass_band(path, seed, W=6.0, H=1.2, tall=1.0, cols=((0.16, 0.4, 0.08
     sc.render.resolution_x, sc.render.resolution_y = res
     render(path)
 
+def city_band(path, seed, W=40.0, H=14.0, res_x=2048, hmin=6.0, hmax=13.0, wmin=6.0, wmax=13.0, shade=1.0, shops=False, tall_roof=False):
+    """banda de edificios REPETIBLE (los anchos suman justo W): fachadas con ventanas, comercios abajo y azoteas. Opaca de abajo hasta el techo de cada edificio"""
+    from PIL import Image, ImageDraw
+    rnd = random.Random(seed)
+    SS = 2  # supermuestreo para bordes suaves
+    rx, ry = res_x * SS, int(res_x * H / W) * SS
+    ppm = rx / W
+    img = Image.new("RGBA", (rx, ry), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    walls = [(0.78, 0.74, 0.66), (0.62, 0.64, 0.68), (0.72, 0.56, 0.46), (0.84, 0.82, 0.78), (0.55, 0.60, 0.66), (0.66, 0.50, 0.42), (0.80, 0.70, 0.55), (0.50, 0.54, 0.58)]
+    awn = [(0.75, 0.18, 0.15), (0.15, 0.40, 0.62), (0.90, 0.70, 0.15), (0.18, 0.50, 0.30), (0.85, 0.40, 0.12)]
+    # anchos que suman exactamente W
+    widths = []
+    acc = 0.0
+    while acc < W - wmin:
+        w = min(rnd.uniform(wmin, wmax), W - acc)
+        if W - acc - w < wmin:
+            w = W - acc
+        widths.append(w)
+        acc += w
+    x = 0.0
+    def col(c, k=1.0):
+        return tuple(int(max(0, min(255, v * k * shade * 255))) for v in c) + (255,)
+    for w in widths:
+        h = rnd.uniform(hmin, hmax)
+        wall = rnd.choice(walls)
+        x0, x1 = int(x * ppm), int((x + w) * ppm)
+        y1 = ry
+        y0 = int(ry - h * ppm)
+        d.rectangle([x0, y0, x1, y1], fill=col(wall))
+        d.rectangle([x1 - int(0.5 * ppm), y0, x1, y1], fill=col(wall, 0.78))  # lado en sombra
+        d.rectangle([x0, y0, x1, y0 + int(0.35 * ppm)], fill=col(wall, 0.7))  # cornisa
+        floor_h = 3.0
+        gy = 3.6 if shops else 0.6  # planta baja
+        nfl = int((h - gy - 1.0) / floor_h)
+        ncol = max(2, int(w / 2.7))
+        cw = w / ncol
+        for f in range(nfl):
+            yy = h - 1.2 - f * floor_h
+            for c in range(ncol):
+                wx = x + c * cw + cw * 0.22
+                ww = cw * 0.56
+                lit = rnd.random() < 0.04
+                gcol = (0.95, 0.85, 0.5) if lit else (0.14 + rnd.random() * 0.06, 0.20 + rnd.random() * 0.06, 0.28 + rnd.random() * 0.06)
+                fr = int(0.12 * ppm)
+                d.rectangle([int(wx * ppm) - fr, int(ry - yy * ppm) - fr, int((wx + ww) * ppm) + fr, int(ry - (yy - 1.7) * ppm) + fr], fill=col(wall, 0.58))  # marco
+                d.rectangle([int(wx * ppm), int(ry - yy * ppm), int((wx + ww) * ppm), int(ry - (yy - 1.7) * ppm)], fill=col(gcol))
+                d.rectangle([int(wx * ppm), int(ry - yy * ppm), int((wx + ww) * ppm), int(ry - (yy - 0.45) * ppm)], fill=col(tuple(min(1.0, g * 1.35) for g in gcol)))  # reflejo del cielo
+                d.rectangle([int(wx * ppm), int(ry - (yy - 1.7) * ppm), int((wx + ww) * ppm), int(ry - (yy - 1.85) * ppm)], fill=col(wall, 0.65))  # alféizar
+        if shops:
+            ac = rnd.choice(awn)
+            d.rectangle([x0 + int(0.4 * ppm), int(ry - 3.5 * ppm), x1 - int(0.4 * ppm), int(ry - 2.7 * ppm)], fill=col(ac))
+            d.rectangle([x0 + int(0.4 * ppm), int(ry - 2.7 * ppm), x1 - int(0.4 * ppm), y1], fill=col((0.12, 0.17, 0.22)))
+            for c in range(max(1, int(w / 4.0))):
+                dx = x + 0.8 + c * 4.0
+                d.rectangle([int(dx * ppm), int(ry - 2.5 * ppm), int((dx + 2.6) * ppm), y1], fill=col((0.22, 0.30, 0.36)))
+        # azotea: tanque, antena o caja de máquinas
+        r = rnd.random()
+        if r < 0.3:
+            bw = rnd.uniform(1.5, 3.0)
+            bx = x + rnd.uniform(1.0, max(1.1, w - bw - 1.0))
+            d.rectangle([int(bx * ppm), y0 - int(1.6 * ppm), int((bx + bw) * ppm), y0], fill=col(wall, 0.85))
+        elif r < 0.5:
+            ax = x + w * rnd.uniform(0.2, 0.8)
+            d.rectangle([int(ax * ppm), y0 - int(3.0 * ppm), int(ax * ppm) + max(2, int(0.12 * ppm)), y0], fill=col((0.25, 0.25, 0.28)))
+        x += w
+    # degradé vertical: más oscuro abajo (sombra de la calle) y más claro arriba
+    arr = np.asarray(img).astype(np.float32)
+    g = np.linspace(1.08, 0.82, arr.shape[0])[:, None, None]
+    arr[:, :, :3] = np.clip(arr[:, :, :3] * g, 0, 255)
+    img = Image.fromarray(arr.astype(np.uint8))
+    img = img.resize((res_x, ry // SS), Image.LANCZOS)
+    img.save(path)
+
 def main():
     global OUT
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
@@ -1133,6 +1207,7 @@ def main():
                                    render_tree(P("arbol_bajo_c.png"), build_low_conifer(GREENS["oscuro"]), (384, 512), 5.0, 33), render_tree(P("arbol_bajo_d.png"), build_low_round(GREENS["azulado"]), (512, 512), 5.0, 34),
                                    render_tree(P("arbol_bajo_e.png"), build_low_round(GREENS["oliva"]), (512, 512), 5.0, 35)],
         "pasto_banda": lambda: [render_grass_band(P("pasto_banda.png"), 41, 6.0, 1.2, 1.0), render_grass_band(P("matorral_banda.png"), 42, 6.0, 2.2, 1.0, (GREENS["medio"][0], GREENS["claro"][0], GREENS["oliva"][0]), 0, 1536, 0.0, True)],
+        "ciudad": lambda: [city_band(P("ciudad_lejos.png"), 51, 40.0, 30.0, 2048, 16.0, 28.0, 7.0, 15.0, 0.78), city_band(P("ciudad_cerca.png"), 52, 40.0, 16.0, 2048, 9.0, 15.0, 6.0, 12.0, 1.0, True)],
         "cielo": lambda: tex_cielo(P("cielo.png")),
     }
     for n in (names or list(jobs)):
