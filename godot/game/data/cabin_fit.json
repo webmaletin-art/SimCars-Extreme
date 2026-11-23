@@ -1,0 +1,392 @@
+{
+ "aventador_s": {
+  "aiden": {
+   "scale": 0.85,
+   "dz": -0.01,
+   "dy": 0.075,
+   "lean0": 0.007,
+   "lean1": 0.333,
+   "hip_tilt": -0.075,
+   "lean_deg": 17.5,
+   "tilt_deg": 12.0,
+   "err_hands_cm": [
+    2.9,
+    2.9
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 1.1,
+   "cost": 0.1205,
+   "ok": true
+  },
+  "kate": {
+   "scale": 1.0,
+   "dz": 0.0,
+   "dy": 0.0,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.075,
+   "lean_deg": 5.0,
+   "tilt_deg": 12.0,
+   "err_hands_cm": [
+    1.0,
+    1.0
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 0.0,
+   "cost": 0.0028,
+   "ok": true
+  },
+  "mujer_adulta": {
+   "scale": 0.865,
+   "dz": -0.06,
+   "dy": 0.09,
+   "lean0": 0.053,
+   "lean1": 0.398,
+   "hip_tilt": -0.075,
+   "lean_deg": 25.0,
+   "tilt_deg": 12.0,
+   "err_hands_cm": [
+    8.5,
+    8.6
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 0.2,
+   "cost": 0.212,
+   "ok": true
+  }
+ },
+ "cls63_amg": {
+  "aiden": {
+   "scale": 0.935,
+   "dz": 0.0,
+   "dy": 0.06,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.285,
+   "lean_deg": 5.0,
+   "tilt_deg": -12.0,
+   "err_hands_cm": [
+    0.0,
+    0.0
+   ],
+   "err_feet_cm": [
+    0.4,
+    2.1
+   ],
+   "penetration_cm": 1.8,
+   "cost": 0.0619,
+   "ok": true
+  },
+  "kate": {
+   "scale": 1.0,
+   "dz": 0.0,
+   "dy": 0.0,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.075,
+   "lean_deg": 5.0,
+   "tilt_deg": 12.0,
+   "err_hands_cm": [
+    0.0,
+    0.0
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 0.0,
+   "cost": 0.002,
+   "ok": true
+  },
+  "mujer_adulta": {
+   "scale": 0.865,
+   "dz": 0.0,
+   "dy": 0.045,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.075,
+   "lean_deg": 5.0,
+   "tilt_deg": 12.0,
+   "err_hands_cm": [
+    0.1,
+    0.1
+   ],
+   "err_feet_cm": [
+    0.8,
+    2.5
+   ],
+   "penetration_cm": 0.6,
+   "cost": 0.0685,
+   "ok": true
+  }
+ },
+ "mclaren_f1": {
+  "aiden": {
+   "scale": 0.85,
+   "dz": 0.2,
+   "dy": 0.09,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.285,
+   "lean_deg": 5.0,
+   "tilt_deg": -12.0,
+   "err_hands_cm": [
+    0.0,
+    0.0
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 24.4,
+   "cost": 1.6758,
+   "ok": false
+  },
+  "kate": {
+   "scale": 1.0,
+   "dz": 0.0,
+   "dy": 0.0,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.075,
+   "lean_deg": 5.0,
+   "tilt_deg": 12.0,
+   "err_hands_cm": [
+    0.9,
+    0.9
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 0.0,
+   "cost": 0.0026,
+   "ok": true
+  },
+  "mujer_adulta": {
+   "scale": 0.88,
+   "dz": 0.2,
+   "dy": 0.09,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.285,
+   "lean_deg": 5.0,
+   "tilt_deg": -12.0,
+   "err_hands_cm": [
+    0.0,
+    0.0
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 4.2,
+   "cost": 0.2271,
+   "ok": true
+  }
+ },
+ "mclaren_f1_gtr": {
+  "aiden": {
+   "scale": 0.85,
+   "dz": -0.2,
+   "dy": 0.09,
+   "lean0": 0.053,
+   "lean1": 0.398,
+   "hip_tilt": -0.075,
+   "lean_deg": 25.0,
+   "tilt_deg": 12.0,
+   "err_hands_cm": [
+    18.3,
+    18.3
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 14.4,
+   "cost": 1.0105,
+   "ok": false
+  },
+  "kate": {
+   "scale": 1.0,
+   "dz": 0.0,
+   "dy": 0.0,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.075,
+   "lean_deg": 5.0,
+   "tilt_deg": 12.0,
+   "err_hands_cm": [
+    0.9,
+    0.9
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 0.0,
+   "cost": 0.0027,
+   "ok": true
+  },
+  "mujer_adulta": {
+   "scale": 0.85,
+   "dz": -0.2,
+   "dy": 0.09,
+   "lean0": 0.053,
+   "lean1": 0.398,
+   "hip_tilt": -0.075,
+   "lean_deg": 25.0,
+   "tilt_deg": 12.0,
+   "err_hands_cm": [
+    23.0,
+    23.1
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 14.8,
+   "cost": 1.1974,
+   "ok": false
+  }
+ },
+ "ranger_limited": {
+  "aiden": {
+   "scale": 1.015,
+   "dz": 0.0,
+   "dy": 0.015,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.285,
+   "lean_deg": 5.0,
+   "tilt_deg": -12.0,
+   "err_hands_cm": [
+    0.3,
+    1.1
+   ],
+   "err_feet_cm": [
+    1.3,
+    3.2
+   ],
+   "penetration_cm": 0.8,
+   "cost": 0.0208,
+   "ok": true
+  },
+  "kate": {
+   "scale": 1.0,
+   "dz": 0.0,
+   "dy": 0.0,
+   "lean0": -0.054,
+   "lean1": 0.245,
+   "hip_tilt": -0.18,
+   "lean_deg": 7.5,
+   "tilt_deg": 0.0,
+   "err_hands_cm": [
+    0.8,
+    1.5
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 0.0,
+   "cost": 0.0042,
+   "ok": true
+  },
+  "mujer_adulta": {
+   "scale": 0.96,
+   "dz": 0.0,
+   "dy": 0.015,
+   "lean0": -0.008,
+   "lean1": 0.311,
+   "hip_tilt": -0.232,
+   "lean_deg": 15.0,
+   "tilt_deg": -6.0,
+   "err_hands_cm": [
+    2.9,
+    3.7
+   ],
+   "err_feet_cm": [
+    0.0,
+    1.9
+   ],
+   "penetration_cm": 0.0,
+   "cost": 0.0477,
+   "ok": true
+  }
+ },
+ "rx3_savanna": {
+  "aiden": {
+   "scale": 1.015,
+   "dz": 0.0,
+   "dy": 0.015,
+   "lean0": -0.069,
+   "lean1": 0.224,
+   "hip_tilt": -0.285,
+   "lean_deg": 5.0,
+   "tilt_deg": -12.0,
+   "err_hands_cm": [
+    1.2,
+    1.0
+   ],
+   "err_feet_cm": [
+    1.3,
+    3.2
+   ],
+   "penetration_cm": 0.8,
+   "cost": 0.0212,
+   "ok": true
+  },
+  "kate": {
+   "scale": 1.0,
+   "dz": 0.0,
+   "dy": 0.0,
+   "lean0": -0.054,
+   "lean1": 0.245,
+   "hip_tilt": -0.18,
+   "lean_deg": 7.5,
+   "tilt_deg": 0.0,
+   "err_hands_cm": [
+    1.8,
+    1.6
+   ],
+   "err_feet_cm": [
+    0.0,
+    0.0
+   ],
+   "penetration_cm": 0.0,
+   "cost": 0.0054,
+   "ok": true
+  },
+  "mujer_adulta": {
+   "scale": 0.96,
+   "dz": 0.0,
+   "dy": 0.015,
+   "lean0": 0.007,
+   "lean1": 0.333,
+   "hip_tilt": -0.232,
+   "lean_deg": 17.5,
+   "tilt_deg": -6.0,
+   "err_hands_cm": [
+    2.9,
+    2.8
+   ],
+   "err_feet_cm": [
+    0.0,
+    1.9
+   ],
+   "penetration_cm": 0.0,
+   "cost": 0.0504,
+   "ok": true
+  }
+ }
+}

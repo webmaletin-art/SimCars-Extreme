@@ -45,6 +45,7 @@ var lbl_info: Label
 var lbl_fps: Label
 var lbl_dmg: Label
 var cam_panel: Control
+var marker_panel: Control
 var free_box: HBoxContainer
 var free_hint: Label
 var pause_panel: Control
@@ -105,9 +106,11 @@ func _build() -> void:
 	is_dirt = String(profile.get("map", "lot")) == "dirt"
 	world = DirtWorld.new() if is_dirt else LotWorld.new()
 	add_child(world)
+	var t_build := Time.get_ticks_msec()
 	world.build({"parked": int(_S("parked")), "grass": float(_S("grass")), "trees": float(_S("trees")), "shadows": _S("shadows") != "off",
 		"backdrop": bool(_S("backdrop")), "cones": bool(_S("cones"))})
 	track = world.track
+	print("MUNDO armado en %d ms (%s)" % [Time.get_ticks_msec() - t_build, "camino de tierra" if is_dirt else "estacionamiento"])
 	fx = Effects.new()
 	add_child(fx)
 	fx.setup(track)
@@ -166,7 +169,7 @@ func _spawn_car() -> void:
 	if pc != "":
 		visual.set_paint(Color.html(pc))
 	_build_car_collider()
-	cockpit = Cockpit.new(visual, String(profile["char"]), float(profile["pilot_height"]))
+	cockpit = Cockpit.new(visual, String(profile["char"]), float(profile["pilot_height"]), profile["markers"])
 	_apply_pilot_adj()
 	rig.visual = visual
 	rig.cockpit = cockpit
@@ -404,6 +407,7 @@ func _show_pause_main() -> void:
 			_refresh_cam_panel()],
 		["AJUSTES", false, _show_pause_options],
 		["REGLAJE DEL AUTO", false, _show_tune],
+		["MARCAR CABINA (asiento, pedales, volante)", false, _open_markers],
 		["RENDIMIENTO (diagnóstico)", false, _show_perf],
 		["REPARAR EL AUTO", false, func() -> void:
 			visual.repair()
@@ -427,6 +431,101 @@ func _show_pause_main() -> void:
 		var b := UI.button(String(it[0]), Vector2(440, 58), 24, bool(it[1]))
 		b.pressed.connect(it[2])
 		box.add_child(b)
+
+## Herramienta de marcado: se mueven el asiento, los pedales, el volante y la palanca con deslizadores viendo al piloto en vivo; el piloto «agarra solo» y se ajusta (manos, pies, torso).
+## COPIAR MARCAS deja el JSON del auto en el portapapeles (para pegárselo al desarrollador y dejarlo fijo en cabin_markers.json).
+func _open_markers() -> void:
+	_toggle_pause()
+	rig.set_preset(6) # tercera persona interior: se ve el piloto sentado
+	profile["cam"] = 6
+	_update_camera_mode()
+	if marker_panel != null:
+		marker_panel.queue_free()
+	marker_panel = UI.panel(Vector2(600, 0), Color(0.03, 0.05, 0.08, 0.88), 16, 12.0)
+	marker_panel.anchor_left = 1.0
+	marker_panel.anchor_right = 1.0
+	marker_panel.offset_left = -640
+	marker_panel.offset_right = -10
+	marker_panel.offset_top = 10
+	marker_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	ui.add_child(marker_panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	marker_panel.add_child(v)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	v.add_child(top)
+	top.add_child(UI.label("MARCAS · " + String(Garage.vehicles()[car_id]["name"]), 20, Color.WHITE))
+	var holder := HBoxContainer.new()
+	v.add_child(holder)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
+	scroll.custom_minimum_size = Vector2(480, 300)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	holder.add_child(scroll)
+	scroll.get_v_scroll_bar().custom_minimum_size = Vector2(30, 0)
+	var arrows := VBoxContainer.new()
+	holder.add_child(arrows)
+	var up := UI.button("SUBIR", Vector2(80, 140), 18)
+	up.pressed.connect(func() -> void: scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - 160))
+	arrows.add_child(up)
+	var dn := UI.button("BAJAR", Vector2(80, 140), 18)
+	dn.pressed.connect(func() -> void: scroll.scroll_vertical += 160)
+	arrows.add_child(dn)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(box)
+	var m: Dictionary = cockpit.current_markers()
+	var apply := func() -> void:
+		(profile["markers"] as Dictionary)[car_id] = m
+		cockpit.apply_markers(m)
+		Profile.save_profile(profile)
+	var add := func(title: String, getter: Callable, setter: Callable, lo: float, hi: float) -> void:
+		box.add_child(UI.slider(title, lo, hi, float(getter.call()), 0.005, func(x: float) -> void:
+			setter.call(x)
+			apply.call(), "%.3f", 230.0))
+	var sec := func(t: String) -> void:
+		box.add_child(UI.label(t, 18, UI.ACC))
+	sec.call("ASIENTO (cadera)")
+	for ax in [[0, "izq / der", -0.9, 0.9], [1, "altura", 0.2, 1.6], [2, "adelante / atrás", -1.5, 2.0]]:
+		var i: int = ax[0]
+		add.call("Cadera " + String(ax[1]), func() -> float: return float(m["seat"]["hip"][i]), func(x: float) -> void: m["seat"]["hip"][i] = x, float(ax[2]), float(ax[3]))
+	sec.call("PEDALES")
+	for ax in [[1, "altura", 0.05, 1.2], [2, "adelante / atrás", -0.5, 2.0]]:
+		var j: int = ax[0]
+		var setp := func(x: float) -> void:
+			for k in ["accel", "brake", "rest"]:
+				m["pedals"][k][j] = x
+		add.call("Pedal " + String(ax[1]), func() -> float: return float(m["pedals"]["accel"][j]), setp, float(ax[2]), float(ax[3]))
+	sec.call("VOLANTE")
+	for ax in [[0, "izq / der", -0.9, 0.9], [1, "altura", 0.3, 1.8], [2, "adelante / atrás", -1.0, 2.2]]:
+		var q: int = ax[0]
+		add.call("Volante " + String(ax[1]), func() -> float: return float(m["wheel"]["center"][q]), func(x: float) -> void: m["wheel"]["center"][q] = x, float(ax[2]), float(ax[3]))
+	add.call("Volante radio", func() -> float: return float(m["wheel"]["radius"]), func(x: float) -> void: m["wheel"]["radius"] = x, 0.12, 0.28)
+	sec.call("PALANCA DE CAMBIOS")
+	for ax in [[0, "izq / der", -0.9, 0.9], [1, "altura", 0.3, 1.4], [2, "adelante / atrás", -1.0, 1.6]]:
+		var r: int = ax[0]
+		add.call("Palanca " + String(ax[1]), func() -> float: return float(m["shifter"][r]), func(x: float) -> void: m["shifter"][r] = x, float(ax[2]), float(ax[3]))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	v.add_child(row)
+	var cp := UI.button("COPIAR MARCAS", Vector2(200, 46), 18, true)
+	cp.pressed.connect(func() -> void: DisplayServer.clipboard_set(JSON.stringify({car_id: m}, "  ")))
+	row.add_child(cp)
+	var rs := UI.button("RESTABLECER", Vector2(170, 46), 18)
+	rs.pressed.connect(func() -> void:
+		(profile["markers"] as Dictionary).erase(car_id)
+		Profile.save_profile(profile)
+		get_tree().paused = false
+		get_tree().reload_current_scene())
+	row.add_child(rs)
+	var cl := UI.button("CERRAR", Vector2(120, 46), 18)
+	cl.pressed.connect(func() -> void:
+		marker_panel.queue_free()
+		marker_panel = null)
+	row.add_child(cl)
 
 func _show_tune() -> void:
 	for c in pause_panel.get_children():
@@ -652,6 +751,7 @@ func _process(dt: float) -> void:
 	var impact := p.take_impact()
 	visual.sync_from(p, dt, car.phys.V)
 	world.set_car_transform(visual.global_transform)
+	world.set_car_pos(Vector3(p.px, p.py, p.pz))
 	_handle_hits(car.take_impact(), p)
 	world.process_breaks()
 	cockpit.update(dt, p, car.in_handbrake)

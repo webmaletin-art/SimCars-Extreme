@@ -11,7 +11,7 @@ extends Node3D
 const CarSnapshot := preload("res://game/car/car_snapshot.gd")
 const TEX_DIR := "res://game/fx/tex/"
 
-const MARKS := 3000 # (con 500 las marcas del drift se borraban en 3-4 s: se veían como si no hubiera)
+const MARKS := 9000 # (con 500 las marcas del drift se borraban en 3-4 s: se veían como si no hubiera)
 
 var intensity := 1.0 # 0 sin partículas … 1 todas (opción «Partículas» 0–10)
 var qk := 1.0 # 0.5 baja · 1.0 media · 1.5 alta (cantidad de partículas)
@@ -340,21 +340,31 @@ func emit_from(key: int, s: CarSnapshot, dt: float, tire_w: float, detail := 1.0
 			debris_rate += clampf(sp * 0.03 + sl * 1.2, 0.0, 1.0)
 			debris_pos = pos
 		any = any or smoke_amt > 0.0 or dust_amt > 0.0 or spray_amt > 0.0
-		# marcas
+		# marcas: en asfalto sólo patinando; en tierra / barro SIEMPRE que rueda (la goma comprime el camino: huella oscura) y cuando patina además levanta bordes claros
 		var mark := (not loose) and sl > 0.22
-		var mark_dirt := loose and sp > 4.0 and sl > 0.25
+		var mark_dirt := loose and sp > 1.5
 		if (mark or mark_dirt) and last[i] != null:
 			var L: Vector3 = last[i]
 			var dx := pos.x - L.x
 			var dz := pos.z - L.z
 			var dd := sqrt(dx * dx + dz * dz)
-			if dd > 0.35 and dd < 3.0:
+			if dd > (0.35 if mark or sl > 0.1 else 0.6) and dd < 3.0:
 				var y1 := _ground(pos.x, pos.z)
-				var b := Basis.from_euler(Vector3(-atan2(y1 - L.y, dd), atan2(dx, dz), 0.0), EULER_ORDER_YXZ)
-				b = b * Basis.from_scale(Vector3(tire_w * (0.9 if mark else 1.1), 1.0, sqrt(dd * dd + (y1 - L.y) * (y1 - L.y))))
-				_marks.set_instance_transform(_mk, Transform3D(b, Vector3((pos.x + L.x) * 0.5, (y1 + L.y) * 0.5 + 0.06, (pos.z + L.z) * 0.5)))
-				_marks.set_instance_color(_mk, Color(0.03, 0.03, 0.03, 0.62) if mark else Color(0.16, 0.12, 0.08, 0.26))
-				_mk = (_mk + 1) % MARKS
+				var pitch := -atan2(y1 - L.y, dd)
+				var yaw_m := atan2(dx, dz)
+				var seg := sqrt(dd * dd + (y1 - L.y) * (y1 - L.y))
+				var mid := Vector3((pos.x + L.x) * 0.5, (y1 + L.y) * 0.5 + 0.045, (pos.z + L.z) * 0.5)
+				var rgt := Vector3(cos(yaw_m), 0.0, -sin(yaw_m))
+				if mark:
+					_add_mark(mid, pitch, yaw_m, tire_w * 0.9, seg, Color(0.03, 0.03, 0.03, 0.62))
+				else:
+					var wet := 1.0 if surf == 5 else 0.0
+					var a := clampf(0.2 + minf(sp, 25.0) * 0.006 + sl * 0.9, 0.2, 0.5)
+					# huella comprimida (más oscura en el barro) + dos bordes claros de tierra desplazada cuando patina
+					_add_mark(mid, pitch, yaw_m, tire_w * 0.85, seg, Color(0.13 - 0.05 * wet, 0.09 - 0.04 * wet, 0.055 - 0.03 * wet, a + 0.1 * wet))
+					if sl > 0.12:
+						_add_mark(mid + rgt * tire_w * 0.58, pitch, yaw_m, tire_w * 0.2, seg, Color(0.62, 0.5, 0.36, 0.22))
+						_add_mark(mid - rgt * tire_w * 0.58, pitch, yaw_m, tire_w * 0.2, seg, Color(0.62, 0.5, 0.36, 0.22))
 				last[i] = Vector3(pos.x, y1, pos.z)
 			elif dd >= 3.0:
 				last[i] = Vector3(pos.x, _ground(pos.x, pos.z), pos.z)
@@ -376,6 +386,12 @@ func emit_from(key: int, s: CarSnapshot, dt: float, tire_w: float, detail := 1.0
 	else:
 		d0.emitting = false
 		d1.emitting = false
+
+func _add_mark(center: Vector3, pitch: float, yaw_m: float, width: float, length: float, col: Color) -> void:
+	var b := Basis.from_euler(Vector3(pitch, yaw_m, 0.0), EULER_ORDER_YXZ) * Basis.from_scale(Vector3(width, 1.0, length))
+	_marks.set_instance_transform(_mk, Transform3D(b, center))
+	_marks.set_instance_color(_mk, col)
+	_mk = (_mk + 1) % MARKS
 
 func _set_emitter(e: GPUParticles3D, pos: Vector3, amount: float, dir: Vector3, vel: float) -> void:
 	if amount <= 0.02:

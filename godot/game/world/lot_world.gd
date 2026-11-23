@@ -111,6 +111,7 @@ func build(p_opts := {}) -> void:
 	for k in p_opts:
 		opts[k] = p_opts[k]
 	rng.seed = 20261123
+	_init_globals()
 	debris = Node3D.new()
 	debris.name = "debris"
 	add_child(debris)
@@ -140,6 +141,14 @@ func _build_scene() -> void:
 	_build_signs()
 	if opts["backdrop"]:
 		_build_backdrop()
+
+func _init_globals() -> void:
+	if not RenderingServer.global_shader_parameter_get_list().has("car_pos"):
+		RenderingServer.global_shader_parameter_add("car_pos", RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3(0, -1000, 0))
+
+## Posición del auto para que aparte el pasto (global del shader)
+func set_car_pos(p: Vector3) -> void:
+	RenderingServer.global_shader_parameter_set("car_pos", p)
 
 func _build_environment() -> void:
 	var env := Environment.new()
@@ -248,9 +257,9 @@ func _build_features() -> void:
 func _feature_mesh(f: Dictionary) -> ArrayMesh:
 	var l := float(f["l"])
 	var w := float(f["w"])
-	var step := 0.25 if String(f["t"]) in ["hump", "wash", "curb"] else 0.4
+	var step := 0.16 if String(f["t"]) == "pothole" else (0.25 if String(f["t"]) in ["hump", "wash", "curb"] else 0.4)
 	var nu := maxi(2, int(ceil(l / step)))
-	var nv := maxi(2, int(ceil(w / 0.5)))
+	var nv := maxi(2, int(ceil(w / (0.16 if String(f["t"]) == "pothole" else 0.5))))
 	var yaw := float(f["yaw"])
 	var c := cos(yaw)
 	var s := sin(yaw)
@@ -264,7 +273,7 @@ func _feature_mesh(f: Dictionary) -> ArrayMesh:
 			var v := -w * 0.5 + w * float(j) / float(nv)
 			var x := float(f["cx"]) + u * c - v * s
 			var z := float(f["cz"]) + u * s + v * c
-			var h := track.feat_height(f, x, z)
+			var h := track.feat_height(f, x, z) + track.base_height(x, z)
 			var col := Color(1, 1, 1)
 			if not dirt:
 				if kind == "hump" or kind == "curb":
@@ -611,6 +620,7 @@ func _sway_mat(tex: String, amp := 0.05, tint := Color.WHITE) -> ShaderMaterial:
 	m.set_shader_parameter("amp", amp)
 	m.set_shader_parameter("tint", Vector3(tint.r, tint.g, tint.b))
 	m.set_shader_parameter("wind", wind)
+	m.set_shader_parameter("push_k", 0.0 if tex.begins_with("arbol") else 1.0)
 	return m
 
 func _multi(tex: String, w: float, h: float, xforms: Array, amp := 0.05, tint := Color.WHITE, vis_end := 0.0, is_tree := false) -> MultiMeshInstance3D:

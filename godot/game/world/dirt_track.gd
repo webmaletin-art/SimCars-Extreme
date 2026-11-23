@@ -19,6 +19,11 @@ var length := 0.0
 var _grid := {}
 var mud: Array = [] # {x, z, r}
 var curv: PackedFloat32Array = PackedFloat32Array() # curvatura firmada por punto (1/m)
+var hprof: PackedFloat32Array = PackedFloat32Array() # altura del eje por punto (lomas suaves: pendiente máxima ~7 %)
+var holes: Array = [] # {x, z, r, depth, water}
+var coarse: PackedVector3Array = PackedVector3Array() # (x, z, altura) cada ~10 m: para el terreno lejano
+const CROWN := 0.045 # el camino es más alto en el medio (desagote)
+const DITCH := 0.11 # profundidad de la zanja de la banquina
 
 func _default_lot() -> void:
 	pass # (el estacionamiento: acá no hay nada; el camino se arma en _init, cuando ya existen las variables de esta clase)
@@ -32,6 +37,21 @@ func _init() -> void:
 	_feature_at(0.64, "wash", 12.0, 0.06, 9)
 	_feature_at(0.80, "hump", 3.0, 0.08)
 	_feature_at(0.92, "wash", 10.0, 0.05, 8)
+	var hr := RandomNumberGenerator.new()
+	hr.seed = 7717
+	for k in 26:
+		var i2 := hr.randi() % pts.size()
+		var tg2 := tans[i2]
+		var n2 := Vector2(-tg2.y, tg2.x)
+		var off2 := hr.randf_range(-3.0, 3.0)
+		var r2 := hr.randf_range(0.45, 1.0)
+		var water := hr.randf() < 0.4
+		var hx: float = pts[i2].x + n2.x * off2
+		var hz: float = pts[i2].y + n2.y * off2
+		holes.append({"x": hx, "z": hz, "r": r2, "depth": hr.randf_range(0.05, 0.13), "water": water})
+		features.append({"t": "pothole", "cx": hx, "cz": hz, "l": r2 * 2.0, "w": r2 * 2.0, "h": float(holes[holes.size() - 1]["depth"]), "yaw": 0.0, "dirt": true})
+		if water:
+			mud.append({"x": hx, "z": hz, "r": r2 * 0.95})
 	for t in [0.12, 0.27, 0.45, 0.58, 0.74, 0.88]:
 		var i := int(t * pts.size())
 		var off := (1.0 if int(t * 100) % 2 == 0 else -1.0) * 0.8
@@ -90,6 +110,13 @@ func _sample() -> void:
 		var a2 := atan2(tans[i].y, tans[i].x)
 		var b2 := atan2(tans[(i + 3) % m].y, tans[(i + 3) % m].x)
 		curv.append(wrapf(b2 - a2, -PI, PI) / maxf(0.1, pts[i].distance_to(pts[(i + 3) % m])))
+	hprof = PackedFloat32Array()
+	for i in m:
+		var u := float(cum[i]) / length
+		hprof.append(2.4 * sin(TAU * 2.0 * u + 0.5) + 1.5 * sin(TAU * 3.0 * u + 1.7) + 0.8 * sin(TAU * 5.0 * u + 0.3) + 0.45 * sin(TAU * 8.0 * u + 2.0))
+	coarse = PackedVector3Array()
+	for i in range(0, m, 5):
+		coarse.append(Vector3(pts[i].x, pts[i].y, hprof[i]))
 	_grid.clear()
 	for i in m:
 		var key := Vector2i(int(floor(pts[i].x / CELL)), int(floor(pts[i].y / CELL)))
@@ -124,6 +151,54 @@ func nearest(x: float, z: float) -> Dictionary:
 	var side := rel.x * -tg.y + rel.y * tg.x
 	return {"i": bi, "d": sqrt(best), "side": side, "tan": tg}
 
+## Altura del eje interpolada entre los dos puntos vecinos (sin escalones cada 2 m)
+func axis_height(nr: Dictionary, x: float, z: float) -> float:
+	var i: int = nr["i"]
+	var m := pts.size()
+	var tg: Vector2 = nr["tan"]
+	var tproj := ((x - pts[i].x) * tg.x + (z - pts[i].y) * tg.y) / 2.0
+	if tproj >= 0.0:
+		return lerpf(hprof[i], hprof[(i + 1) % m], minf(tproj, 1.0))
+	return lerpf(hprof[i], hprof[(i - 1 + m) % m], minf(-tproj, 1.0))
+
+## Perfil transversal (relativo al eje): corona del camino, huellas de las ruedas (dos surcos y un lomo en el medio) y zanja en la banquina
+static func cross_profile(lat: float) -> float:
+	var a := absf(lat)
+	var h := 0.0
+	if a < 4.6:
+		h += CROWN * (1.0 - (a / 4.4) * (a / 4.4))
+		h -= 0.032 * exp(-pow((a - 0.92) / 0.3, 2.0)) # surcos de las ruedas
+		h += 0.018 * exp(-pow(a / 0.35, 2.0)) # lomo central
+	if a > 4.2:
+		h -= DITCH * exp(-pow((a - 5.3) / 0.55, 2.0)) # zanja
+		h += 0.05 * exp(-pow((a - 6.2) / 0.3, 2.0)) # montículo al pie del cerco
+	return h
+
+func base_height(x: float, z: float) -> float:
+	var nr := nearest(x, z)
+	var d: float = nr["d"]
+	return axis_height(nr, x, z) + cross_profile(float(nr["side"]) if d < 7.0 else 7.0)
+
+## Relieve del terreno lejano (sólo visual): sigue la altura del camino cerca y se mezcla suavemente con lomas propias lejos
+func terrain_height(x: float, z: float) -> float:
+	var nr := nearest(x, z)
+	var d: float = nr["d"]
+	if d < 7.0:
+		return axis_height(nr, x, z) - 0.16
+	var num := 0.0
+	var den := 0.0
+	for c in coarse:
+		var dd := maxf(3.0, sqrt((c.x - x) * (c.x - x) + (c.y - z) * (c.y - z)))
+		var w := 1.0 / (dd * dd * dd)
+		num += w * c.z
+		den += w
+	var hr := num / den
+	var far := smoothstep(14.0, 70.0, d)
+	var hills := 5.5 * sin(x * 0.011 + 1.3) * cos(z * 0.014 - 0.4) + 2.4 * sin(x * 0.027 + z * 0.019) + 1.1 * sin(z * 0.05 - x * 0.03)
+	var edge := 1.0 - smoothstep(190.0, 260.0, d)
+	var rise := smoothstep(6.0, 11.0, d) * 0.16 - 0.16 # recupera el escalón del zanjeo bajo el camino
+	return hr * (1.0 - far) + (hr * 0.4 + hills) * far * edge + rise
+
 func surface_at(x: float, z: float) -> int:
 	for m in mud:
 		if (x - float(m["x"])) * (x - float(m["x"])) + (z - float(m["z"])) * (z - float(m["z"])) < float(m["r"]) * float(m["r"]):
@@ -137,7 +212,8 @@ func surface_at(x: float, z: float) -> int:
 	return SURF_GRASS
 
 func ground_info(x: float, z: float) -> Vector2:
-	var h := 0.0
+	var nr := nearest(x, z) # (una sola búsqueda por consulta: altura y superficie salen de la misma)
+	var h := axis_height(nr, x, z) + cross_profile(float(nr["side"]))
 	for f in features:
 		var cx: float = f["cx"]
 		var cz: float = f["cz"]
@@ -145,7 +221,19 @@ func ground_info(x: float, z: float) -> Vector2:
 		if absf(x - cx) > mm or absf(z - cz) > mm:
 			continue
 		h += feat_height(f, x, z)
-	return Vector2(h, float(surface_at(x, z)))
+	var d: float = nr["d"]
+	var surf := SURF_GRASS
+	if d < ROAD_HALF:
+		surf = SURF_DIRT
+	elif d < FENCE_HALF + 0.5:
+		surf = SURF_SHOULDER
+	for m in mud:
+		var dx: float = x - float(m["x"])
+		var dz: float = z - float(m["z"])
+		if dx * dx + dz * dz < float(m["r"]) * float(m["r"]):
+			surf = 5
+			break
+	return Vector2(h, float(surf))
 
 ## El cerco: una pared continua a FENCE_HALF del eje. Devuelve la normal que devuelve al auto hacia el camino
 func push(x: float, z: float, r: float) -> Vector3:

@@ -13,6 +13,7 @@ static func defaults() -> Dictionary:
 		"paint": {},
 		"map": "lot",
 		"tune": {}, # reglaje manual por auto: id → {clave: valor}
+		"markers": {}, # marcas de la cabina que el dueño ajustó en el juego (asiento, pedales, volante, palanca)
 		"pilot_height": 1.86,
 		"pilot_adj": {"x": 0.0, "y": 0.0, "z": 0.0},
 		"cam": 1, # índice de CameraRig.CAMERAS

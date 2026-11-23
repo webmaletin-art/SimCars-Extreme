@@ -80,6 +80,8 @@ func feat_height(f: Dictionary, x: float, z: float) -> float:
 	var h := float(f["h"])
 	# los costados se afinan 25 cm para que la rueda no «caiga» a un escalón recto
 	var edge := _smooth((w * 0.5 - absf(v)) / 0.3)
+	if String(f["t"]) == "pothole":
+		edge = 1.0
 	match String(f["t"]):
 		"hump":
 			var t := cos(u / l * PI)
@@ -109,11 +111,23 @@ func feat_height(f: Dictionary, x: float, z: float) -> float:
 		"mound":
 			var r := sqrt((u / (l * 0.5)) * (u / (l * 0.5)) + (v / (w * 0.5)) * (v / (w * 0.5)))
 			return h * maxf(0.0, 1.0 - r) * maxf(0.0, 1.0 - r) * (3.0 - 2.0 * maxf(0.0, 1.0 - r)) if r < 1.0 else 0.0
+		"pothole":
+			# bache: cuenco con borde levantado; l = diámetro, h = profundidad
+			var rp := sqrt(u * u + v * v) / (l * 0.5)
+			if rp >= 1.15:
+				return 0.0
+			var bowl := -h * (1.0 - minf(rp, 1.0) * minf(rp, 1.0))
+			var rim := h * 0.22 * exp(-pow((rp - 1.0) / 0.12, 2.0))
+			return (bowl if rp < 1.0 else 0.0) + rim
 		"bank":
 			# peralte: la mitad exterior de una curva circular sube hasta h
 			var r2 := sqrt(u * u + v * v)
 			var rr := l * 0.5
 			return h * _smooth((r2 - rr * 0.35) / (rr * 0.65)) * (1.0 if r2 < rr else 0.0)
+	return 0.0
+
+## Altura de base del terreno (el estacionamiento es plano; el camino de tierra tiene lomas: DirtTrack lo reemplaza)
+func base_height(_x: float, _z: float) -> float:
 	return 0.0
 
 func ground_info(x: float, z: float) -> Vector2:

@@ -47,8 +47,32 @@ var char_id := ""
 var height := 1.76
 var crew_visible := true
 var adj := {"x": 0.0, "y": 0.0, "z": 0.0} # ajuste del jugador del lugar del piloto (m)
+var markers := {} # marcas de la cabina de este auto (ver cabin_markers.json): asiento, pedales, volante, palanca
+var fit := {} # ajuste calculado por la marioneta de Blender (tools/blender/puppet_fit.py) para este auto y este piloto
+var fit_scale := 1.0
+var lean0 := -0.10
+var lean1 := 0.18
+var hip_tilt := -0.18
 
-func _init(p_car: Node3D, p_char: String, p_height := 1.76) -> void:
+const MARKERS_PATH := "res://game/data/cabin_markers.json"
+const FIT_PATH := "res://game/data/cabin_fit.json"
+static var _markers_all := {}
+static var _fit_all := {}
+
+static func _load_json(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return d if d is Dictionary else {}
+
+static func markers_of(car_id: String, override := {}) -> Dictionary:
+	if _markers_all.is_empty():
+		_markers_all = _load_json(MARKERS_PATH)
+	if override.has(car_id) and (override[car_id] as Dictionary).size() > 0:
+		return override[car_id]
+	return _markers_all.get(car_id, {})
+
+func _init(p_car: Node3D, p_char: String, p_height := 1.76, p_override := {}) -> void:
 	car = p_car
 	meta = p_car.meta
 	char_id = p_char
@@ -56,6 +80,22 @@ func _init(p_car: Node3D, p_char: String, p_height := 1.76) -> void:
 	if not meta.has("steer_center"):
 		return
 	_measure()
+	markers = markers_of(String(meta.get("id", "")), p_override)
+	if not markers.is_empty():
+		apply_markers(markers)
+	if _fit_all.is_empty():
+		_fit_all = _load_json(FIT_PATH)
+	fit = ((_fit_all.get(String(meta.get("id", "")), {}) as Dictionary).get(char_id, {})) as Dictionary
+	if not fit.is_empty() and not bool(fit.get("ok", true)):
+		fit = {} # el solver no logró alcanzar las marcas (marcas incoherentes): se usa el ajuste de siempre
+	if not fit.is_empty():
+		fit_scale = float(fit.get("scale", 1.0))
+		hip_z += float(fit.get("dz", 0.0))
+		hip_y += float(fit.get("dy", 0.0))
+		lean0 = float(fit.get("lean0", lean0))
+		lean1 = float(fit.get("lean1", lean1))
+		hip_tilt = float(fit.get("hip_tilt", hip_tilt))
+		eZ = hip_z + 0.11
 	_spawn()
 
 func _measure() -> void:
@@ -98,6 +138,51 @@ func _measure() -> void:
 		mount["hood"] = {"y": 0.95, "z": front_z - 1.2, "ly": -0.04}
 	mount["bumper"] = {"y": 0.42, "z": front_z - 0.12, "ly": 0.0}
 
+## Las marcas mandan sobre lo calculado: asiento (cadera), pedales, volante y palanca (todo en el marco del auto: +z adelante, +x izquierda, y desde el piso)
+func apply_markers(m: Dictionary) -> void:
+	markers = m
+	if m.has("wheel"):
+		var w: Dictionary = m["wheel"]
+		var c: Array = w["center"]
+		S = Vector3(c[0], c[1], c[2])
+		if w.has("axis"):
+			var a: Array = w["axis"]
+			n_wheel = Vector3(a[0], a[1], a[2]).normalized()
+		wheel_r = float(w.get("radius", wheel_r))
+	if m.has("seat"):
+		var h: Array = m["seat"]["hip"]
+		xD = float(h[0])
+		hip_y = float(h[1])
+		hip_z = float(h[2])
+		eZ = hip_z + 0.11
+		eY = S.y + 0.27
+		if m["seat"].has("eye_y"):
+			eY = float(m["seat"]["eye_y"])
+	if m.has("pedals"):
+		var a2: Array = m["pedals"]["accel"]
+		ped_z = float(a2[2])
+		ped_y = float(a2[1])
+	if m.has("shifter"):
+		var k: Array = m["shifter"]
+		knob = Vector3(k[0], k[1], k[2])
+		hb_pos = knob + Vector3(0, -0.06, -0.30)
+	if m.has("handbrake"):
+		var hb: Array = m["handbrake"]
+		hb_pos = Vector3(hb[0], hb[1], hb[2])
+	if m.has("shift_hand"):
+		sh_i = 1 if String(m["shift_hand"]) == "L" else 0
+
+## Las marcas tal como están ahora (para copiarlas desde el juego)
+func current_markers() -> Dictionary:
+	return {
+		"wheel": {"center": [snappedf(S.x, 0.001), snappedf(S.y, 0.001), snappedf(S.z, 0.001)], "axis": [snappedf(n_wheel.x, 0.001), snappedf(n_wheel.y, 0.001), snappedf(n_wheel.z, 0.001)], "radius": snappedf(wheel_r, 0.001)},
+		"seat": {"hip": [snappedf(xD, 0.001), snappedf(hip_y, 0.001), snappedf(hip_z, 0.001)], "cushion_top": snappedf(hip_y - 0.14, 0.001), "back_z": snappedf(hip_z - 0.26, 0.001), "back_tilt_deg": 14, "eye_y": snappedf(eY, 0.001)},
+		"pedals": {"accel": [snappedf(xD - 0.11, 0.001), snappedf(ped_y, 0.001), snappedf(ped_z, 0.001)], "brake": [snappedf(xD - 0.01, 0.001), snappedf(ped_y, 0.001), snappedf(ped_z, 0.001)], "rest": [snappedf(xD + 0.13, 0.001), snappedf(ped_y, 0.001), snappedf(ped_z - 0.02, 0.001)]},
+		"shifter": [snappedf(knob.x, 0.001), snappedf(knob.y, 0.001), snappedf(knob.z, 0.001)],
+		"handbrake": [snappedf(hb_pos.x, 0.001), snappedf(hb_pos.y, 0.001), snappedf(hb_pos.z, 0.001)],
+		"shift_hand": "L" if sh_i == 1 else "R",
+	}
+
 func _spawn() -> void:
 	var path := CHARS + char_id + ".glb"
 	if not ResourceLoader.exists(path):
@@ -105,7 +190,7 @@ func _spawn() -> void:
 	crew = Node3D.new()
 	crew.name = "crew"
 	car.model.add_child(crew)
-	rig = RigPilot.new(crew, load(path), height)
+	rig = RigPilot.new(crew, load(path), height * fit_scale)
 	ok = rig.ok
 	if not ok:
 		crew.queue_free()
@@ -184,7 +269,7 @@ func update(dt: float, p: CarSnapshot, hb: bool) -> void:
 	look_yaw = look
 	var brake_nod := clampf(-p.aLong * 0.004, -0.02, 0.05)
 	rig.pose({"hips": Vector3(x0 + b.x * 0.4 + jx * jit * 0.3, hy + b.y * 0.3 + jy * jit * 0.5 + 0.003 * sin(_time * 1.6), hz + b.z * 0.3),
-		"head": Vector3(x0 + h.x, ey - 0.07 + h.y + brake_nod, ez - 0.09 + h.z), "roll": h.x * 1.2 - b.x * 0.5, "look": look, "look_y": -0.1 - brake_nod * 4.0,
+		"head": Vector3(x0 + h.x, ey - 0.07 + h.y + brake_nod, ez - 0.09 + h.z), "roll": h.x * 1.2 - b.x * 0.5, "lean0": lean0, "lean1": lean1, "hip_tilt": hip_tilt, "look": look, "look_y": -0.1 - brake_nod * 4.0,
 		"hands": hands, "grip": 1.2 + 0.45 * maxf(sw, hw2),
 		"feet": [{"side": "Left", "pos": Vector3(x0 + 0.13, py, pz - 0.02)}, {"side": "Right", "pos": mo.right_foot(x0, py - 0.13, pz - 0.62)}]})
 
