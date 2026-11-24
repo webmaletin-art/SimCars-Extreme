@@ -137,6 +137,35 @@ func _maps() -> void:
 		go.pressed.connect(func() -> void:
 			profile["map"] = mid
 			Profile.save_profile(profile)
+			_mode_choice())
+		cv.add_child(go)
+
+## Antes de manejar: ¿ARCADE o SIMULACIÓN? (cambia las ayudas, el giro del volante y la sensación; se puede retocar después en Ajustes)
+func _mode_choice() -> void:
+	_reset()
+	_box.add_child(_back_button(_maps))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 30)
+	row.position = Vector2(110, 120)
+	_box.add_child(row)
+	var cur := String((profile["settings"] as Dictionary).get("sim", "mid"))
+	for m in [["ARCADE", "arcade", "Para pasarla bien: el auto se agarra solo, frena y corrige por vos, la línea de trazada te guía y el volante gira ¾ de vuelta. Ideal para empezar o jugar relajado."],
+			["SIMULACIÓN", "pro", "Para manejar de verdad: sin ayudas, ABS y control apagados, volante de vuelta y media real y el auto responde como en la vida real. Más difícil y más realista."]]:
+		var card := UI.panel(Vector2(520, 380), UI.BG, 18, 18.0)
+		row.add_child(card)
+		var cv := VBoxContainer.new()
+		cv.add_theme_constant_override("separation", 14)
+		card.add_child(cv)
+		cv.add_child(UI.label(String(m[0]), 38, Color.WHITE))
+		var d := UI.label(String(m[2]), 20, UI.DIM)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(470, 190)
+		cv.add_child(d)
+		var sid: String = m[1]
+		var go := UI.button("MANEJAR EN " + String(m[0]), Vector2(470, 70), 26, sid == cur or (sid == "arcade" and cur != "pro"))
+		go.pressed.connect(func() -> void:
+			OptionsPanel.apply_sim(profile["settings"], sid)
+			Profile.save_profile(profile)
 			play_pressed.emit())
 		cv.add_child(go)
 

@@ -631,8 +631,8 @@ func sync_from(p, dt: float, V) -> void:
 			st.rotation.y = p.steerAngle
 		(w["spin"] as Node3D).rotation.x += p.wheel_omega[i] * dt
 	if steer_node != null:
-		steer_vis += (p.steerAngle * 7.5 - steer_vis) * (1.0 - exp(-dt * 25.0))
-		steer_node.basis = Basis(steer_axis, -steer_vis)
+		steer_vis += (-p.steerAngle * 7.5 - steer_vis) * (1.0 - exp(-dt * 25.0))
+		steer_node.basis = Basis(steer_axis, -steer_vis) # (steer_vis ya lleva el signo corregido: el volante giraba al revés)
 	_animate_parts(dt, absf(p.vLong))
 	if not _under_nodes.is_empty():
 		_show_under(absf(p.roll) > 0.45 or absf(p.pitch) > 0.45) # el piso sólo se ve si el auto va muy inclinado
@@ -704,6 +704,9 @@ func hit(point: Vector3, dir: Vector3, speed: float) -> void:
 			continue
 		if String(e["part"]) != "" and (parts.get(e["part"], {}) as Dictionary).get("state", 0) >= 3:
 			continue
+		var nl := String(mi.name).to_lower()
+		if nl.contains("interior") or nl.contains("cockpit") or nl.contains("salon") or nl.contains("seat") or nl.contains("dash") or nl.contains("steer") or nl.contains("rul"):
+			continue # (el interior no se deforma: se veía todo torcido desde adentro)
 		if not _near(mi, point, 1.5):
 			continue
 		_dent(mi, point, dir, 0.55 + base * 0.004, depth)

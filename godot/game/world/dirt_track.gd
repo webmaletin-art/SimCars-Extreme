@@ -40,7 +40,8 @@ func _ctrl() -> Array:
 	return CTRL
 
 func _elev(u: float) -> float:
-	return 2.4 * sin(TAU * 2.0 * u + 0.5) + 1.5 * sin(TAU * 3.0 * u + 1.7) + 0.8 * sin(TAU * 5.0 * u + 0.3) + 0.45 * sin(TAU * 8.0 * u + 2.0)
+	# (antes llegaba a pendientes del 12–24 % en tramos cortos y el auto despegaba: se achata a ~la mitad y se sacan los armónicos rápidos)
+	return 0.6 * (2.4 * sin(TAU * 2.0 * u + 0.5) + 1.5 * sin(TAU * 3.0 * u + 1.7) + 0.5 * sin(TAU * 5.0 * u + 0.3))
 
 func road_half() -> float:
 	return ROAD_HALF
@@ -65,12 +66,12 @@ func _bank(u: float) -> float:
 
 func _setup() -> void:
 	# lomos y ondas sobre el camino (cada rasgo se alinea con el eje: yaw = ángulo de la tangente)
-	_feature_at(0.17, "hump", 3.0, 0.07)
-	_feature_at(0.33, "wash", 14.0, 0.05, 10)
-	_feature_at(0.52, "hump", 3.4, 0.10)
-	_feature_at(0.64, "wash", 12.0, 0.06, 9)
-	_feature_at(0.80, "hump", 3.0, 0.08)
-	_feature_at(0.92, "wash", 10.0, 0.05, 8)
+	_feature_at(0.17, "hump", 4.0, 0.035)
+	_feature_at(0.33, "wash", 14.0, 0.025, 10)
+	_feature_at(0.52, "hump", 4.4, 0.045)
+	_feature_at(0.64, "wash", 12.0, 0.03, 9)
+	_feature_at(0.80, "hump", 4.0, 0.04)
+	_feature_at(0.92, "wash", 10.0, 0.025, 8)
 	var hr := RandomNumberGenerator.new()
 	hr.seed = 7717
 	for k in 26:
@@ -82,7 +83,7 @@ func _setup() -> void:
 		var water := hr.randf() < 0.4
 		var hx: float = pts[i2].x + n2.x * off2
 		var hz: float = pts[i2].y + n2.y * off2
-		holes.append({"x": hx, "z": hz, "r": r2, "depth": hr.randf_range(0.05, 0.13), "water": water})
+		holes.append({"x": hx, "z": hz, "r": r2, "depth": hr.randf_range(0.03, 0.07), "water": water})
 		features.append({"t": "pothole", "cx": hx, "cz": hz, "l": r2 * 2.0, "w": r2 * 2.0, "h": float(holes[holes.size() - 1]["depth"]), "yaw": 0.0, "dirt": true})
 		if water:
 			mud.append({"x": hx, "z": hz, "r": r2 * 0.95})

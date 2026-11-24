@@ -122,7 +122,7 @@ func _build_city_boxes() -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			props.add_child(mi)
 			_tag(mi, "misc", 320.0)
-			arc_nodes.append({"n": mi, "ext": 70.0, "a0": float(arcs[ci][0]), "a1": float(arcs[ci][1])})
+			arc_nodes.append({"n": mi, "ext": 25.0, "a0": float(arcs[ci][0]), "a1": float(arcs[ci][1])})
 
 ## punto del frente de los edificios (fila 0 pegada, fila 1 más atrás) en la muestra je
 func _wall_pt(_j: int, je: int, side: float, offs: PackedFloat32Array, row: int) -> Vector2:

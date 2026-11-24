@@ -10,7 +10,7 @@ const ROAD := preload("res://game/world/road.gdshader")
 const SPECIES := [
 	["arbol_bajo_a", 5.0, 1.0, 24], ["arbol_bajo_b", 5.0, 1.0, 18], ["arbol_bajo_c", 5.0, 0.75, 14], ["arbol_bajo_d", 5.0, 1.0, 16], ["arbol_bajo_e", 5.0, 1.0, 16],
 	["arbol_cipres", 8.0, 0.5, 5], ["arbol_alamo", 8.0, 0.417, 4]]
-var wall_set := ["bosque_lejos", "bosque_cerca", 11.0, 8.0] # texturas y alturas de la pared de fondo (el circuito urbano usa edificios)
+var wall_set := ["bosque_lejos", "bosque_cerca", 7.5, 5.5] # texturas y alturas de la pared de fondo (el circuito urbano usa edificios)
 const WALL_OFF := 34.0 # hasta dónde se aleja la pared de bosque del eje (m)
 
 var dt: DirtTrack
@@ -47,8 +47,8 @@ func set_car_pos(p: Vector3) -> void:
 	_last_pos = p
 	_speed = lerpf(_speed, minf(v, 90.0), 0.08)
 	var arc := _arc_of(p)
-	var ahead := clampf(190.0 + 2.4 * _speed, 190.0, 340.0)
-	RenderingServer.global_shader_parameter_set("track_window", Vector4(arc, ahead, 90.0, dt.length))
+	var ahead := clampf(120.0 + 1.6 * _speed, 120.0, 210.0) # (más corto: en las curvas se veían árboles del otro lado de la pista)
+	RenderingServer.global_shader_parameter_set("track_window", Vector4(arc, ahead, 60.0, dt.length))
 	_win_clock -= dtm
 	if _win_clock <= 0.0:
 		_win_clock = 0.2
@@ -57,7 +57,7 @@ func set_car_pos(p: Vector3) -> void:
 			var half: float = absf(float(e["a1"]) - float(e["a0"])) * 0.5
 			var d := fposmod(mid - arc + dt.length * 0.5, dt.length) - dt.length * 0.5
 			var ext: float = float(e.get("ext", 0.0)) # (la pared de bosque se ve un poco más lejos: es barata y así no se nota el corte)
-			(e["n"] as Node3D).visible = d - half < ahead + ext and d + half > -90.0 - ext
+			(e["n"] as Node3D).visible = d - half < ahead + ext and d + half > -60.0 - ext
 
 ## Pared continua a lo largo del eje, partida en pedazos de ~100 m (cada uno se oculta solo cuando su tramo queda lejos del auto)
 func _wall_chunks(side: float, lat: float, y_off: float, h: float, u_per_m: float, v_top: float, v_bot: float, mat: Material, one_sided: bool) -> void:
@@ -471,7 +471,7 @@ func _wall_ribbon(side: float, offs: PackedFloat32Array, pull: float, h: float, 
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		props.add_child(mi)
 		_tag(mi, "misc", 320.0)
-		arc_nodes.append({"n": mi, "ext": 70.0, "a0": float(dt.cum[(c0 * 3) % n]), "a1": float(dt.cum[(c1 * 3) % n]) if c1 * 3 < n else dt.length})
+		arc_nodes.append({"n": mi, "ext": 25.0, "a0": float(dt.cum[(c0 * 3) % n]), "a1": float(dt.cum[(c1 * 3) % n]) if c1 * 3 < n else dt.length})
 
 ## Bandas de pasto y de matorral (png repetible) pegadas al cerco: la hilera real de matas va adelante y esto rellena el resto sin un solo pasto suelto
 func _build_grass_bands() -> void:

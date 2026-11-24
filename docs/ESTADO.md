@@ -72,3 +72,11 @@
 - **Edificios del circuito urbano, rehechos al estilo Dream City** (el png se veía falso): cajas de ~10 triángulos (frente, costados y techo) y el shader `city_facade.gdshader` copiado de Dream Rally, que dibuja ventanas, postigos, balcones, vidrieras y marquesinas por medidas de pared y las funde en pared lisa a lo lejos. Dos filas (baja pegada y alta detrás) a lo largo del circuito, sin pisar otros tramos, partidas en pedazos que se ocultan con la ventana del circuito. Los png de ciudad se sacaron.
 - **Pausa con desplazamiento** (no dejaba bajar hasta los últimos botones): el menú está dentro de un `ScrollContainer`, se arrastra con el dedo.
 - **Volante completo y bien agarrado**: al separarlo por geometría (Aventador, F1) se suman las caras pegadas a las elegidas para que no quede ningún pedazo atrás, y las manos agarran el volante que de verdad se ve (su centro de giro y su radio real, no los del JSON).
+
+## Octava tanda (24/11/2026): reporte del teléfono
+- **Árboles de más en las curvas**: ventana del circuito más corta (adelante 120–210 m según la velocidad, atrás 60 m) y paredes de bosque más bajas (7,5 y 5,5 m: antes 11 y 8 m asomaban por encima de los árboles cercanos).
+- **Saltos en el camino de tierra**: las lomas del eje bajaron a ~60 % (pendientes del 12–24 % en tramos cortos) y los lomos, ondas y baches se achicaron a la mitad (`tests/ground_roughness.gd` mide el piso). El asfalto no tenía saltos (máx. 3 % de pendiente).
+- **Volante al revés**: sólo la animación; ahora el aro y las manos giran al lado correcto.
+- **Interior deformado**: las abolladuras ya no tocan interior, cockpit, asientos, tablero ni volante.
+- **Pantalla nueva antes de manejar**: tras elegir el mapa pregunta **ARCADE** o **SIMULACIÓN** (aplica los niveles `arcade` / `pro` de Ajustes; se retoca después).
+- Pendiente (sin cambiar a ciegas): manos que agarran mal el volante y piernas que atraviesan el asiento en algunos autos: hace falta ver capturas por auto (MARCAR CABINA ya permite corregirlo).

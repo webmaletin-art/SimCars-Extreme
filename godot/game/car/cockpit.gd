@@ -238,7 +238,7 @@ func update(dt: float, p: CarSnapshot, hb: bool) -> void:
 	var jit := 0.0016 * sp
 	var jy := _jit_noise(_time, 43.0, 27.0)
 	var jx := _jit_noise(_time, 37.0, 21.0)
-	mo.steer_vis += (p.steerAngle * 7.5 - mo.steer_vis) * (1.0 - exp(-dt * 25.0))
+	mo.steer_vis += (-p.steerAngle * 7.5 - mo.steer_vis) * (1.0 - exp(-dt * 25.0))
 	var shift_busy := CrewMotion.shift_w(mo.shift_t) > 0.45 or mo.hbW > 0.45
 	var busy := [false, false]
 	busy[sh_i] = shift_busy
